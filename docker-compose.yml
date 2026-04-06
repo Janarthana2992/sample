@@ -1,0 +1,205 @@
+version: "3.9"
+
+services:
+  # ──────────────── Infrastructure ────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: ecom_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ecom_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ecom_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-ecom_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ecom_user} -d ${POSTGRES_DB:-ecom_db}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: ecom_redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_pass} --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_pass}", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ──────────────── Infrastructure (Search) ────────────────
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+    container_name: ecom_elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -qv '\"status\":\"red\"'" ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ──────────────── Backend Services ────────────────
+  auth_service:
+    build:
+      context: ./backend/auth_service
+      dockerfile: Dockerfile
+    container_name: ecom_auth
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ecom_user}:${POSTGRES_PASSWORD:-ecom_pass}@postgres:5432/${POSTGRES_DB:-ecom_db}
+      JWT_SECRET_KEY: ${JWT_SECRET}
+      JWT_ALGORITHM: HS256
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      JWT_REFRESH_TOKEN_EXPIRE_DAYS: 30
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8001:8001"
+
+  product_service:
+    build:
+      context: ./backend/product_service
+      dockerfile: Dockerfile
+    container_name: ecom_product
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ecom_user}:${POSTGRES_PASSWORD:-ecom_pass}@postgres:5432/${POSTGRES_DB:-ecom_db}
+      ES_ENDPOINT: http://elasticsearch:9200
+      ES_API_KEY: ""
+      ES_INDEX: ${ES_INDEX:-products}
+      JWT_SECRET_KEY: ${JWT_SECRET}
+      JWT_ALGORITHM: HS256
+      UPLOAD_DIR: /app/uploads
+      MAX_IMAGE_SIZE_MB: 5
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      AI_SERVICE_URL: http://ai_service:8005
+    depends_on:
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    ports:
+      - "8002:8002"
+    volumes:
+      - product_uploads:/app/uploads
+
+  cart_service:
+    build:
+      context: ./backend/cart_service
+      dockerfile: Dockerfile
+    container_name: ecom_cart
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/0
+      CART_TTL_SECONDS: 604800
+      JWT_SECRET_KEY: ${JWT_SECRET}
+      JWT_ALGORITHM: HS256
+      PRODUCT_SERVICE_URL: http://product_service:8002
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8003:8003"
+
+  order_service:
+    build:
+      context: ./backend/order_service
+      dockerfile: Dockerfile
+    container_name: ecom_order
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ecom_user}:${POSTGRES_PASSWORD:-ecom_pass}@postgres:5432/${POSTGRES_DB:-ecom_db}
+      JWT_SECRET_KEY: ${JWT_SECRET}
+      JWT_ALGORITHM: HS256
+      CART_SERVICE_URL: http://cart_service:8003
+      PRODUCT_SERVICE_URL: http://product_service:8002
+      AUTH_SERVICE_URL: http://auth_service:8001
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      cart_service:
+        condition: service_started
+    ports:
+      - "8004:8004"
+
+  ai_service:
+    build:
+      context: ./backend/ai_service
+      dockerfile: Dockerfile
+    container_name: ecom_ai
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ecom_user}:${POSTGRES_PASSWORD:-ecom_pass}@postgres:5432/${POSTGRES_DB:-ecom_db}
+      JWT_SECRET_KEY: ${JWT_SECRET}
+      JWT_ALGORITHM: HS256
+      PRODUCT_SERVICE_URL: http://product_service:8002
+      FAISS_INDEX_PATH: /app/faiss_store
+      MODEL_NAME: all-MiniLM-L6-v2
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8005:8005"
+    volumes:
+      - faiss_store:/app/faiss_store
+
+  # ──────────────── Frontend ────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_AUTH_SERVICE_URL: ${VITE_AUTH_SERVICE_URL:-http://localhost:8001}
+        VITE_PRODUCT_SERVICE_URL: ${VITE_PRODUCT_SERVICE_URL:-http://localhost:8002}
+        VITE_CART_SERVICE_URL: ${VITE_CART_SERVICE_URL:-http://localhost:8003}
+        VITE_ORDER_SERVICE_URL: ${VITE_ORDER_SERVICE_URL:-http://localhost:8004}
+        VITE_AI_SERVICE_URL: ${VITE_AI_SERVICE_URL:-http://localhost:8005}
+        VITE_MAPBOX_TOKEN: ${VITE_MAPBOX_TOKEN}
+    container_name: ecom_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - auth_service
+      - product_service
+      - cart_service
+      - order_service
+      - ai_service
+
+volumes:
+  postgres_data:
+  redis_data:
+  product_uploads:
+  faiss_store:
+  elasticsearch_data:
