@@ -149,5 +149,3 @@ Implemented areas include:
 - Admin tools for products, variants, deals, staff permissions, dashboards, and order operations
 - Staff tools for dispatch, review replies, and stock updates
 - Elasticsearch-backed search and FAISS-based recommendation endpoints
-
-For detailed behavior and endpoint coverage, see the documents in `docs/`.
