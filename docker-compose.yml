@@ -64,7 +64,7 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ecom_user}:${POSTGRES_PASSWORD:-ecom_pass}@postgres:5432/${POSTGRES_DB:-ecom_db}
-      JWT_SECRET_KEY: ${JWT_SECRET}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       JWT_ALGORITHM: HS256
       JWT_ACCESS_TOKEN_EXPIRE_MINUTES: 60
       JWT_REFRESH_TOKEN_EXPIRE_DAYS: 30
@@ -91,7 +91,7 @@ services:
       ES_ENDPOINT: http://elasticsearch:9200
       ES_API_KEY: ""
       ES_INDEX: ${ES_INDEX:-products}
-      JWT_SECRET_KEY: ${JWT_SECRET}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       JWT_ALGORITHM: HS256
       UPLOAD_DIR: /app/uploads
       MAX_IMAGE_SIZE_MB: 5
@@ -116,7 +116,7 @@ services:
     environment:
       REDIS_URL: redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/0
       CART_TTL_SECONDS: 604800
-      JWT_SECRET_KEY: ${JWT_SECRET}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       JWT_ALGORITHM: HS256
       PRODUCT_SERVICE_URL: http://product_service:8002
       ENVIRONMENT: ${ENVIRONMENT:-development}
@@ -134,7 +134,7 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ecom_user}:${POSTGRES_PASSWORD:-ecom_pass}@postgres:5432/${POSTGRES_DB:-ecom_db}
-      JWT_SECRET_KEY: ${JWT_SECRET}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       JWT_ALGORITHM: HS256
       CART_SERVICE_URL: http://cart_service:8003
       PRODUCT_SERVICE_URL: http://product_service:8002
@@ -160,7 +160,7 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ecom_user}:${POSTGRES_PASSWORD:-ecom_pass}@postgres:5432/${POSTGRES_DB:-ecom_db}
-      JWT_SECRET_KEY: ${JWT_SECRET}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       JWT_ALGORITHM: HS256
       PRODUCT_SERVICE_URL: http://product_service:8002
       FAISS_INDEX_PATH: /app/faiss_store
