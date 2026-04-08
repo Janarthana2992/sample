@@ -19,7 +19,7 @@ export default function Cart() {
         onSuccess: async () => {
             const updated = await cartService.getCart()
             setCart(updated)
-            qc.invalidateQueries({ queryKey: ['cart'] })
+            await qc.invalidateQueries({ queryKey: ['cart'] })
             toast.success('Item removed')
         },
     })
@@ -30,7 +30,7 @@ export default function Cart() {
         onSuccess: async () => {
             const updated = await cartService.getCart()
             setCart(updated)
-            qc.invalidateQueries({ queryKey: ['cart'] })
+            await qc.invalidateQueries({ queryKey: ['cart'] })
         },
         onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update'),
     })

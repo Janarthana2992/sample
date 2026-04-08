@@ -112,13 +112,13 @@ export default function ProductDetail() {
     const reviewMutation = useMutation({
         mutationFn: (data: { product_id: string; order_id: string; rating: number; review_text?: string }) =>
             productService.createReview(data),
-        onSuccess: () => {
+        onSuccess: async () => {
             toast.success('Review submitted!')
             setReviewRating(0)
             setReviewText('')
-            qc.invalidateQueries({ queryKey: ['reviews', id] })
-            qc.invalidateQueries({ queryKey: ['my-orders-for-review', id] })
-            qc.invalidateQueries({ queryKey: ['admin', 'reviews'] })
+            await qc.invalidateQueries({ queryKey: ['reviews', id] })
+            await qc.invalidateQueries({ queryKey: ['my-orders-for-review', id] })
+            await qc.invalidateQueries({ queryKey: ['admin', 'reviews'] })
         },
         onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to submit review'),
     })
@@ -126,22 +126,22 @@ export default function ProductDetail() {
     const updateReviewMutation = useMutation({
         mutationFn: (data: { rating: number; review_text: string }) =>
             productService.updateReview(editReview!.review_id, data),
-        onSuccess: () => {
+        onSuccess: async () => {
             toast.success('Review updated!')
             setEditReview(null)
-            qc.invalidateQueries({ queryKey: ['reviews', id] })
-            qc.invalidateQueries({ queryKey: ['admin', 'reviews'] })
+            await qc.invalidateQueries({ queryKey: ['reviews', id] })
+            await qc.invalidateQueries({ queryKey: ['admin', 'reviews'] })
         },
         onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update review'),
     })
 
     const deleteReviewMutation = useMutation({
         mutationFn: (reviewId: string) => productService.deleteOwnReview(reviewId),
-        onSuccess: () => {
+        onSuccess: async () => {
             toast.success('Review deleted')
-            qc.invalidateQueries({ queryKey: ['reviews', id] })
-            qc.invalidateQueries({ queryKey: ['my-orders-for-review', id] })
-            qc.invalidateQueries({ queryKey: ['admin', 'reviews'] })
+            await qc.invalidateQueries({ queryKey: ['reviews', id] })
+            await qc.invalidateQueries({ queryKey: ['my-orders-for-review', id] })
+            await qc.invalidateQueries({ queryKey: ['admin', 'reviews'] })
         },
         onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to delete review'),
     })

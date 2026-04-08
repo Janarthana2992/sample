@@ -19,8 +19,8 @@ export default function StaffOrders() {
     const dispatchMutation = useMutation({
         mutationFn: ({ orderId, tracking_number }: { orderId: string; tracking_number: string }) =>
             orderService.updateStatus(orderId, { status: 'dispatched', tracking_number }),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ['staff', 'orders'] })
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ['staff', 'orders'] })
             setSelectedOrder(null)
             reset()
             toast.success('Order marked as dispatched')

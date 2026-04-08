@@ -19,8 +19,8 @@ export default function AdminCategories() {
 
     const createMutation = useMutation({
         mutationFn: () => productService.createCategory({ name: name.trim(), slug: autoSlug(name.trim()) }),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ['categories'] })
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ['categories'] })
             toast.success('Category created')
             setName('')
         },
@@ -29,7 +29,7 @@ export default function AdminCategories() {
 
     const deleteMutation = useMutation({
         mutationFn: (id: string) => productService.deleteCategory(id),
-        onSuccess: () => { qc.invalidateQueries({ queryKey: ['categories'] }); toast.success('Category deleted') },
+        onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['categories'] }); toast.success('Category deleted') },
         onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to delete category'),
     })
 

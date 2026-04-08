@@ -36,8 +36,8 @@ export default function AdminStaff() {
 
     const createMutation = useMutation({
         mutationFn: (data: object) => authService.createStaff(data),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ['admin', 'staff'] })
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ['admin', 'staff'] })
             setShowCreate(false)
             reset()
             setSelectedPermissions([])
@@ -48,13 +48,13 @@ export default function AdminStaff() {
 
     const toggleMutation = useMutation({
         mutationFn: (id: string) => authService.toggleSuspend(id),
-        onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'staff'] }); toast.success('Status updated') },
+        onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'staff'] }); toast.success('Status updated') },
     })
 
     const updatePermsMutation = useMutation({
         mutationFn: ({ id, perms }: { id: string; perms: string[] }) =>
             authService.updateStaffPermissions(id, perms),
-        onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'staff'] }); setEditingPerms(null); toast.success('Permissions updated') },
+        onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'staff'] }); setEditingPerms(null); toast.success('Permissions updated') },
     })
 
     const onCreateSubmit = (data: CreateStaffForm) => {

@@ -58,8 +58,8 @@ export default function AdminReviews() {
     const replyMutation = useMutation({
         mutationFn: ({ reviewId, text }: { reviewId: string; text: string }) =>
             productService.replyToReview(reviewId, text),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ['admin', 'reviews'] })
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ['admin', 'reviews'] })
             setExpandedId(null)
             setReplyText('')
             toast.success('Reply posted')
@@ -69,16 +69,16 @@ export default function AdminReviews() {
 
     const retractMutation = useMutation({
         mutationFn: (reviewId: string) => productService.retractReply(reviewId),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ['admin', 'reviews'] })
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ['admin', 'reviews'] })
             toast.success('Reply retracted')
         },
     })
 
     const deleteMutation = useMutation({
         mutationFn: (reviewId: string) => productService.deleteReview(reviewId),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ['admin', 'reviews'] })
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ['admin', 'reviews'] })
             toast.success('Review deleted')
         },
     })

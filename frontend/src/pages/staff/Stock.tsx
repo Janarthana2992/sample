@@ -18,8 +18,8 @@ export default function StaffStock() {
     const updateMutation = useMutation({
         mutationFn: ({ id, ...payload }: { id: string; stock_quantity: number; stock_status: string }) =>
             productService.updateStock(id, payload),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ['staff', 'stock'] })
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ['staff', 'stock'] })
             setEditingId(null)
             reset()
             toast.success('Stock updated')
@@ -71,8 +71,8 @@ export default function StaffStock() {
                                         </select>
                                     ) : (
                                         <span className={`badge text-xs ${product.stock_status === 'in_stock' ? 'bg-green-100 text-green-700' :
-                                                product.stock_status === 'low_stock' ? 'bg-orange-100 text-orange-700' :
-                                                    'bg-red-100 text-red-700'
+                                            product.stock_status === 'low_stock' ? 'bg-orange-100 text-orange-700' :
+                                                'bg-red-100 text-red-700'
                                             }`}>
                                             {product.stock_status.replace('_', ' ')}
                                         </span>

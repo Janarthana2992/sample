@@ -39,7 +39,7 @@ export default function AdminOrders() {
     const statusMutation = useMutation({
         mutationFn: ({ orderId, newStatus, tracking }: { orderId: string; newStatus: string; tracking?: string }) =>
             orderService.updateStatus(orderId, { status: newStatus, ...(tracking ? { tracking_number: tracking } : {}) }),
-        onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'orders'] }); toast.success('Order status updated') },
+        onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'orders'] }); toast.success('Order status updated') },
         onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update status'),
     })
 

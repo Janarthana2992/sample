@@ -26,19 +26,19 @@ export default function AdminProducts() {
 
     const deleteMutation = useMutation({
         mutationFn: (id: string) => productService.delete(id),
-        onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'products'] }); toast.success('Product deactivated') },
+        onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'products'] }); toast.success('Product deactivated') },
         onError: () => toast.error('Failed to delete'),
     })
 
     const toggleMutation = useMutation({
         mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
             productService.update(id, { is_active }),
-        onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'products'] }),
+        onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'products'] }) },
     })
 
     const productFlagsMutation = useMutation({
         mutationFn: ({ id, data }: { id: string; data: object }) => productService.update(id, data),
-        onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'products'] }),
+        onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'products'] }) },
     })
 
     const handleExport = async () => {
@@ -59,7 +59,7 @@ export default function AdminProducts() {
         setImporting(true)
         try {
             const result = await productService.importProductsCsv(file)
-            qc.invalidateQueries({ queryKey: ['admin', 'products'] })
+            await qc.invalidateQueries({ queryKey: ['admin', 'products'] })
             toast.success(`Import done: ${result.created} created, ${result.updated} updated, ${result.errors} errors`)
             if (result.error_details.length > 0) {
                 console.warn('Import errors:', result.error_details)

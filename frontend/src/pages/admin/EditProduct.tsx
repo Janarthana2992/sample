@@ -44,8 +44,8 @@ export default function EditProduct() {
 
     const createVariantMutation = useMutation({
         mutationFn: (data: object) => productService.createVariant(id!, data),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ['variants', id] })
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ['variants', id] })
             toast.success('Variant added')
             setVariantForm({ sku: '', color: '', size: '', stock_quantity: '0', price_adjustment: '0' })
         },
@@ -55,8 +55,8 @@ export default function EditProduct() {
     const updateVariantMutation = useMutation({
         mutationFn: ({ variantId, data }: { variantId: string; data: object }) =>
             productService.updateVariant(id!, variantId, data),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ['variants', id] })
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ['variants', id] })
             toast.success('Variant updated')
             setEditingVariant(null)
         },
@@ -65,7 +65,7 @@ export default function EditProduct() {
 
     const deleteVariantMutation = useMutation({
         mutationFn: (variantId: string) => productService.deleteVariant(id!, variantId),
-        onSuccess: () => { qc.invalidateQueries({ queryKey: ['variants', id] }); toast.success('Variant deleted') },
+        onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['variants', id] }); toast.success('Variant deleted') },
     })
 
     const handleAddVariant = () => {
@@ -101,9 +101,9 @@ export default function EditProduct() {
 
     const updateMutation = useMutation({
         mutationFn: (data: object) => productService.update(id!, data),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ['admin', 'products'] })
-            qc.invalidateQueries({ queryKey: ['product', id] })
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ['admin', 'products'] })
+            await qc.invalidateQueries({ queryKey: ['product', id] })
             toast.success('Product updated!')
             navigate('/admin/products')
         },

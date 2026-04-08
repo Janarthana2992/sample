@@ -21,8 +21,8 @@ export default function StaffReviews() {
     const replyMutation = useMutation({
         mutationFn: ({ reviewId, reply_text }: { reviewId: string; reply_text: string }) =>
             productService.replyToReview(reviewId, { reply_text }),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ['staff', 'reviews'] })
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ['staff', 'reviews'] })
             setSelectedReview(null)
             reset()
             toast.success('Reply posted')
@@ -32,7 +32,7 @@ export default function StaffReviews() {
 
     const retractMutation = useMutation({
         mutationFn: (reviewId: string) => productService.retractReply(reviewId),
-        onSuccess: () => { qc.invalidateQueries({ queryKey: ['staff', 'reviews'] }); toast.success('Reply retracted') },
+        onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['staff', 'reviews'] }); toast.success('Reply retracted') },
     })
 
     if (isLoading) return <LoadingSpinner />

@@ -48,19 +48,30 @@ export default function AdminEvents() {
 
     const createMut = useMutation({
         mutationFn: () => productService.createEvent(buildFd()),
-        onSuccess: () => { toast.success('Event created!'); qc.invalidateQueries({ queryKey: ['events'] }); reset() },
+        onSuccess: async () => {
+            toast.success('Event created!')
+            await qc.invalidateQueries({ queryKey: ['events'] })
+            reset()
+        },
         onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed to create event'),
     })
 
     const updateMut = useMutation({
         mutationFn: () => productService.updateEvent(editing!.event_id, buildFd()),
-        onSuccess: () => { toast.success('Event updated!'); qc.invalidateQueries({ queryKey: ['events'] }); reset() },
+        onSuccess: async () => {
+            toast.success('Event updated!')
+            await qc.invalidateQueries({ queryKey: ['events'] })
+            reset()
+        },
         onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed to update event'),
     })
 
     const deleteMut = useMutation({
         mutationFn: (id: string) => productService.deleteEvent(id),
-        onSuccess: () => { toast.success('Event deleted'); qc.invalidateQueries({ queryKey: ['events'] }) },
+        onSuccess: async () => {
+            toast.success('Event deleted')
+            await qc.invalidateQueries({ queryKey: ['events'] })
+        },
         onError: () => toast.error('Failed to delete event'),
     })
 

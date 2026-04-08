@@ -227,25 +227,25 @@ export default function AdminDeals() {
 
     const createMutation = useMutation({
         mutationFn: (data: object) => productService.createDeal(data),
-        onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'deals'] }); setShowCreate(false); toast.success('Deal created!') },
+        onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'deals'] }); setShowCreate(false); toast.success('Deal created!') },
         onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to create deal'),
     })
 
     const updateMutation = useMutation({
         mutationFn: ({ id, data }: { id: string; data: object }) => productService.updateDeal(id, data),
-        onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'deals'] }); setEditDeal(null); toast.success('Deal updated') },
+        onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'deals'] }); setEditDeal(null); toast.success('Deal updated') },
         onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update deal'),
     })
 
     const toggleMutation = useMutation({
         mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
             productService.updateDeal(id, { is_active }),
-        onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'deals'] }),
+        onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'deals'] }) },
     })
 
     const deleteMutation = useMutation({
         mutationFn: (id: string) => productService.deleteDeal(id),
-        onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'deals'] }); toast.success('Deal deleted') },
+        onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'deals'] }); toast.success('Deal deleted') },
     })
 
     const toDatetimeLocal = (iso: string) => {
