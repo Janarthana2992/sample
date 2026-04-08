@@ -41,7 +41,7 @@ class ProductCreate(BaseModel):
     mrp: Decimal = Field(gt=0)
     selling_price: Decimal = Field(gt=0)
     stock_quantity: int = Field(ge=0)
-    stock_status: Optional[str] = None
+    stock_status: Optional[str] = Field(default=None, pattern=r"^(in_stock|low_stock|out_of_stock)$")
     tags: List[str] = Field(default_factory=list)
     category_ids: List[uuid.UUID] = Field(min_length=1)
     weight_kg: Optional[Decimal] = None
@@ -76,7 +76,7 @@ class ProductUpdate(BaseModel):
     mrp: Optional[Decimal] = Field(default=None, gt=0)
     selling_price: Optional[Decimal] = Field(default=None, gt=0)
     stock_quantity: Optional[int] = Field(default=None, ge=0)
-    stock_status: Optional[str] = None
+    stock_status: Optional[str] = Field(default=None, pattern=r"^(in_stock|low_stock|out_of_stock)$")
     tags: Optional[List[str]] = None
     category_ids: Optional[List[uuid.UUID]] = None
     is_active: Optional[bool] = None
@@ -96,7 +96,7 @@ class ProductUpdate(BaseModel):
 
 class StockUpdate(BaseModel):
     stock_quantity: Optional[int] = Field(default=None, ge=0)
-    stock_status: Optional[str] = None
+    stock_status: Optional[str] = Field(default=None, pattern=r"^(in_stock|low_stock|out_of_stock)$")
 
 
 class ProductOut(BaseModel):

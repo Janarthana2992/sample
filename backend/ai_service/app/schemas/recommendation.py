@@ -1,12 +1,12 @@
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import uuid
 
 
 class EmbedRequest(BaseModel):
     product_id: uuid.UUID
-    name: str
-    description: str
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=5000)
 
 
 class RecommendationItem(BaseModel):

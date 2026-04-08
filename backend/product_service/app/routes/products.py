@@ -5,6 +5,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,22 +43,35 @@ async def create_product(
     db: AsyncSession = Depends(get_db),
 ):
     from decimal import Decimal
-    cat_ids = [uuid.UUID(c.strip()) for c in category_ids.split(",") if c.strip()]
-    payload = ProductCreate(
-        sku=sku,
-        name=name,
-        description=description,
-        mrp=Decimal(str(mrp)),
-        selling_price=Decimal(str(selling_price)),
-        stock_quantity=stock_quantity,
-        category_ids=cat_ids,
-        tags=[t.strip() for t in tags.split(",")] if tags else [],
-        is_active=is_active,
-        is_featured=is_featured,
-        is_promoted=is_promoted,
-        promotion_priority=promotion_priority,
-        promotion_badge=promotion_badge,
-    )
+    try:
+        cat_ids = [uuid.UUID(c.strip()) for c in category_ids.split(",") if c.strip()]
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="category_ids must be a comma-separated list of UUIDs",
+        ) from exc
+
+    try:
+        payload = ProductCreate(
+            sku=sku,
+            name=name,
+            description=description,
+            mrp=Decimal(str(mrp)),
+            selling_price=Decimal(str(selling_price)),
+            stock_quantity=stock_quantity,
+            category_ids=cat_ids,
+            tags=[t.strip() for t in tags.split(",")] if tags else [],
+            is_active=is_active,
+            is_featured=is_featured,
+            is_promoted=is_promoted,
+            promotion_priority=promotion_priority,
+            promotion_badge=promotion_badge,
+        )
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=exc.errors(),
+        ) from exc
     return await product_service.create_product(db, payload, images, admin.user_id)
 
 

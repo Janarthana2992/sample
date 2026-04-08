@@ -10,7 +10,7 @@ class VariantCreate(BaseModel):
     color: Optional[str] = Field(default=None, max_length=80)
     size: Optional[str] = Field(default=None, max_length=80)
     stock_quantity: int = Field(ge=0, default=0)
-    stock_status: str = "in_stock"
+    stock_status: str = Field(default="in_stock", pattern=r"^(in_stock|low_stock|out_of_stock)$")
     price_adjustment: Decimal = Field(default=Decimal("0"))
     is_active: bool = True
 
@@ -19,7 +19,7 @@ class VariantUpdate(BaseModel):
     color: Optional[str] = Field(default=None, max_length=80)
     size: Optional[str] = Field(default=None, max_length=80)
     stock_quantity: Optional[int] = Field(default=None, ge=0)
-    stock_status: Optional[str] = None
+    stock_status: Optional[str] = Field(default=None, pattern=r"^(in_stock|low_stock|out_of_stock)$")
     price_adjustment: Optional[Decimal] = None
     is_active: Optional[bool] = None
 

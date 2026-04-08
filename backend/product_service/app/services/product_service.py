@@ -112,14 +112,16 @@ async def _embed_to_ai(product: Product):
     try:
         import httpx as _httpx
         async with _httpx.AsyncClient(timeout=10.0) as client:
-            await client.post(
+            response = await client.post(
                 f"{settings.AI_SERVICE_URL}/internal/embed",
+                headers={"X-Internal-Service-Token": settings.INTERNAL_SERVICE_TOKEN},
                 json={
                     "product_id": str(product.product_id),
                     "name": product.name,
                     "description": product.description or "",
                 },
             )
+            response.raise_for_status()
     except Exception as exc:
         logger.warning("AI embed failed for %s: %s", product.product_id, exc)
 

@@ -1,7 +1,8 @@
+import secrets
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -19,6 +20,16 @@ from app.services.search_service import es_service
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
+
+
+def _require_internal_service_token(
+    x_internal_service_token: str | None = Header(default=None, alias="X-Internal-Service-Token"),
+) -> None:
+    if not x_internal_service_token or not secrets.compare_digest(
+        x_internal_service_token,
+        settings.INTERNAL_SERVICE_TOKEN,
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid internal service token")
 
 
 @asynccontextmanager
@@ -39,11 +50,11 @@ app = FastAPI(
     version="1.0.0",
     description="Product management, search, deals, and reviews",
     lifespan=lifespan,
-    docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
+    docs_url="/docs" if settings.ENVIRONMENT == "development" else None,
     redoc_url=None,
 )
 
-allowed_origins = ["*"] if settings.ENVIRONMENT == "development" else []
+allowed_origins = ["*"] if settings.ENVIRONMENT == "development" else [settings.FRONTEND_URL]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -68,7 +79,10 @@ app.include_router(variants_router)
 
 # Internal endpoint for AI/Order services to re-index a product
 @app.post("/internal/index", tags=["internal"])
-async def index_product(doc: dict):
+async def index_product(
+    doc: dict,
+    _=Depends(_require_internal_service_token),
+):
     from app.services.search_service import es_service as _es
     ok = await _es.index_product(doc)
     return {"indexed": ok}
@@ -76,7 +90,7 @@ async def index_product(doc: dict):
 
 # One-shot bulk reindex (adds category_names to existing ES docs)
 @app.post("/internal/reindex-all", tags=["internal"])
-async def reindex_all():
+async def reindex_all(_=Depends(_require_internal_service_token)):
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
     from app.db.database import AsyncSessionLocal

@@ -5,10 +5,14 @@ import uuid
 from pydantic import BaseModel, Field, field_validator
 
 
+VALID_DEAL_TYPES = {"percentage", "flat", "bogo", "free_shipping"}
+VALID_APPLIES_TO = {"all_products", "specific_category", "specific_skus"}
+
+
 class DealCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
-    deal_type: str
-    applies_to: str
+    deal_type: str = Field(pattern=r"^(percentage|flat|bogo|free_shipping)$")
+    applies_to: str = Field(pattern=r"^(all_products|specific_category|specific_skus)$")
     discount_value: Optional[Decimal] = Field(default=None, ge=0)
     min_cart_value: Optional[Decimal] = Field(default=None, ge=0)
     start_datetime: datetime

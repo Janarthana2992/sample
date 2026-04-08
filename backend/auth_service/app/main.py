@@ -32,7 +32,7 @@ app = FastAPI(
     version="1.0.0",
     description="JWT authentication, RBAC, user & staff management",
     lifespan=lifespan,
-    docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
+    docs_url="/docs" if settings.ENVIRONMENT == "development" else None,
     redoc_url=None,
 )
 

@@ -61,9 +61,11 @@ async def autocomplete(
     db: AsyncSession = Depends(get_db),
 ):
     # Category name prefix matches (case-insensitive, from DB)
+    # Escape LIKE wildcards to prevent pattern injection
+    safe_q = q.replace("%", r"\%").replace("_", r"\_")
     cat_result = await db.execute(
         select(Category.name)
-        .where(Category.is_active == True, Category.name.ilike(f"{q}%"))
+        .where(Category.is_active == True, Category.name.ilike(f"{safe_q}%"))
         .limit(3)
     )
     cat_suggestions = [r[0] for r in cat_result.all()]

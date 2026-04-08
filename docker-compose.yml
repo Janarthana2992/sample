@@ -93,9 +93,11 @@ services:
       ES_INDEX: ${ES_INDEX:-products}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       JWT_ALGORITHM: HS256
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
       UPLOAD_DIR: /app/uploads
       MAX_IMAGE_SIZE_MB: 5
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       AI_SERVICE_URL: http://ai_service:8005
     depends_on:
       postgres:
@@ -118,8 +120,10 @@ services:
       CART_TTL_SECONDS: 604800
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       JWT_ALGORITHM: HS256
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
       PRODUCT_SERVICE_URL: http://product_service:8002
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
     depends_on:
       redis:
         condition: service_healthy
@@ -136,6 +140,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ecom_user}:${POSTGRES_PASSWORD:-ecom_pass}@postgres:5432/${POSTGRES_DB:-ecom_db}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       JWT_ALGORITHM: HS256
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
       CART_SERVICE_URL: http://cart_service:8003
       PRODUCT_SERVICE_URL: http://product_service:8002
       AUTH_SERVICE_URL: http://auth_service:8001
@@ -144,6 +149,7 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
     depends_on:
       postgres:
         condition: service_healthy
@@ -162,10 +168,13 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ecom_user}:${POSTGRES_PASSWORD:-ecom_pass}@postgres:5432/${POSTGRES_DB:-ecom_db}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       JWT_ALGORITHM: HS256
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
       PRODUCT_SERVICE_URL: http://product_service:8002
+      ORDER_SERVICE_URL: http://order_service:8004
       FAISS_INDEX_PATH: /app/faiss_store
       MODEL_NAME: all-MiniLM-L6-v2
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
     depends_on:
       postgres:
         condition: service_healthy

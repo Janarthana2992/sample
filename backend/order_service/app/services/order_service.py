@@ -33,6 +33,10 @@ ROLE_ALLOWED_TRANSITIONS = {
 }
 
 
+def _internal_service_headers() -> dict[str, str]:
+    return {"X-Internal-Service-Token": settings.INTERNAL_SERVICE_TOKEN}
+
+
 async def create_order(db: AsyncSession, user_id: str, payload: CheckoutRequest) -> Order:
     """
     Atomic order creation:
@@ -43,9 +47,23 @@ async def create_order(db: AsyncSession, user_id: str, payload: CheckoutRequest)
     """
     # 1. Fetch cart
     async with httpx.AsyncClient(timeout=10.0) as client:
-        r = await client.get(f"{settings.CART_SERVICE_URL}/cart/internal/{user_id}")
+        try:
+            r = await client.get(
+                f"{settings.CART_SERVICE_URL}/cart/internal/{user_id}",
+                headers=_internal_service_headers(),
+            )
+        except httpx.HTTPError as exc:
+            logger.error("Failed to fetch cart for %s: %s", user_id, exc)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Cart service unavailable",
+            ) from exc
         if r.status_code != 200:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Could not fetch cart")
+            logger.error("Cart service returned %s for %s", r.status_code, user_id)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Cart service unavailable",
+            )
         cart_items = r.json()
 
     if not cart_items:
@@ -97,7 +115,12 @@ async def create_order(db: AsyncSession, user_id: str, payload: CheckoutRequest)
     # 5. Clear cart (best-effort; order already committed)
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.delete(f"{settings.CART_SERVICE_URL}/cart/internal/{user_id}")
+            response = await client.delete(
+                f"{settings.CART_SERVICE_URL}/cart/internal/{user_id}",
+                headers=_internal_service_headers(),
+            )
+            if response.status_code not in {status.HTTP_204_NO_CONTENT, status.HTTP_404_NOT_FOUND}:
+                logger.warning("Cart clear returned %s for %s", response.status_code, user_id)
     except Exception as exc:
         logger.warning("Failed to clear cart after order creation: %s", exc)
 

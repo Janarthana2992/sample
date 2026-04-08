@@ -56,8 +56,8 @@ async def _save_event_image(file: UploadFile, event_id: uuid.UUID) -> str:
 @router.post("", response_model=EventOut, status_code=status.HTTP_201_CREATED)
 async def create_event(
     title: str = Form(..., min_length=3, max_length=200),
-    description: str = Form(..., min_length=10),
-    register_url: str = Form(...),
+    description: str = Form(..., min_length=10, max_length=5000),
+    register_url: str = Form(..., pattern=r"^https?://.+"),
     event_date: Optional[str] = Form(default=None),
     is_active: bool = Form(default=True),
     image: Optional[UploadFile] = File(default=None),
@@ -73,7 +73,7 @@ async def create_event(
         try:
             parsed_date = datetime.fromisoformat(event_date.replace("Z", "+00:00"))
         except ValueError:
-            pass
+            raise HTTPException(status_code=422, detail="event_date must be a valid ISO 8601 datetime")
 
     event = Event(
         title=title,
@@ -140,7 +140,7 @@ async def update_event(
         try:
             ev.event_date = datetime.fromisoformat(event_date.replace("Z", "+00:00"))
         except ValueError:
-            pass
+            raise HTTPException(status_code=422, detail="event_date must be a valid ISO 8601 datetime")
     if image and image.filename:
         ev.image_url = await _save_event_image(image, event_id)
 

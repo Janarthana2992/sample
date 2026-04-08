@@ -83,6 +83,7 @@ At minimum, review these values in `.env` before starting the stack:
 - `POSTGRES_PASSWORD`
 - `REDIS_PASSWORD`
 - `JWT_SECRET_KEY` - shared secret used by every backend service to sign and verify JWTs
+- `INTERNAL_SERVICE_TOKEN` - shared secret used by backend services for protected internal-only endpoints
 - `SMTP_USER` and `SMTP_PASSWORD` if you want real password-reset emails
 - `VITE_MAPBOX_TOKEN` if you want the dashboard map to render correctly
 

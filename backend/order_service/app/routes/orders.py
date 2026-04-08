@@ -67,7 +67,7 @@ async def checkout(
 
 @router.get("/orders", response_model=PaginatedOrders)
 async def get_orders(
-    user_id_filter: Optional[str] = Query(default=None, alias="user_id"),
+    user_id_filter: Optional[uuid.UUID] = Query(default=None, alias="user_id"),
     filter_status: Optional[str] = Query(default=None, alias="status"),
     page: int = Query(default=1, ge=1),
     size: int = Query(default=20, ge=1, le=100),
@@ -75,9 +75,17 @@ async def get_orders(
     db: AsyncSession = Depends(get_db),
 ):
     role = auth["role"]
-    if role == "customer" and user_id_filter and user_id_filter != auth["user_id"]:
+    if role == "customer" and user_id_filter and str(user_id_filter) != auth["user_id"]:
         raise HTTPException(status_code=403, detail="Access denied")
-    return await list_orders(db, auth["user_id"], role, user_id_filter, filter_status, page, size)
+    return await list_orders(
+        db,
+        auth["user_id"],
+        role,
+        str(user_id_filter) if user_id_filter else None,
+        filter_status,
+        page,
+        size,
+    )
 
 
 @router.get("/orders/{order_id}", response_model=OrderOut)
@@ -142,12 +150,13 @@ async def top_products(
     if auth["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admins only")
     from sqlalchemy import text
-    date_filter = {
-        "today": "CURRENT_DATE",
-        "7d": "CURRENT_DATE - INTERVAL '7 days'",
-        "30d": "CURRENT_DATE - INTERVAL '30 days'",
+    date_interval = {
+        "today": "0 days",
+        "7d": "7 days",
+        "30d": "30 days",
     }[period]
-    result = await db.execute(text(f"""
+    result = await db.execute(
+        text("""
         SELECT oi.product_id,
                p.name            AS product_name,
                SUM(oi.quantity)  AS units_sold,
@@ -155,12 +164,14 @@ async def top_products(
         FROM order_items oi
         JOIN orders o ON o.order_id = oi.order_id
         LEFT JOIN products p ON p.product_id = oi.product_id
-        WHERE o.created_at >= {date_filter}
+        WHERE o.created_at >= CURRENT_DATE - CAST(:interval AS INTERVAL)
           AND o.status != 'cancelled'
         GROUP BY oi.product_id, p.name
         ORDER BY units_sold DESC
         LIMIT 10
-    """))
+        """),
+        {"interval": date_interval},
+    )
     rows = result.fetchall()
     return [{"product_id": str(r.product_id), "product_name": r.product_name or str(r.product_id)[:8], "units_sold": r.units_sold, "revenue": float(r.revenue)} for r in rows]
 

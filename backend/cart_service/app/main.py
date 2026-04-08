@@ -23,11 +23,11 @@ app = FastAPI(
     version="1.0.0",
     description="Redis-backed shopping cart",
     lifespan=lifespan,
-    docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
+    docs_url="/docs" if settings.ENVIRONMENT == "development" else None,
     redoc_url=None,
 )
 
-allowed_origins = ["*"] if settings.ENVIRONMENT == "development" else []
+allowed_origins = ["*"] if settings.ENVIRONMENT == "development" else [settings.FRONTEND_URL]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,

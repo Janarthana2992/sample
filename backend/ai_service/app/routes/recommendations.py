@@ -1,9 +1,10 @@
 import logging
+import secrets
 import uuid
 from typing import List
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
@@ -13,29 +14,49 @@ from app.services.embedding_service import embed_and_store, get_similar, embed_t
 from app.services.faiss_service import faiss_service
 
 router = APIRouter(tags=["recommendations"])
-bearer_scheme = HTTPBearer(auto_error=False)
+bearer_scheme = HTTPBearer()
 logger = logging.getLogger(__name__)
 
 
-def _optional_user(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)) -> dict | None:
-    if not credentials:
-        return None
+def _decode_access_token(token: str) -> dict:
     try:
-        return jwt.decode(credentials.credentials, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
-    except JWTError:
-        return None
+        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+    except JWTError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
+    if payload.get("type") != "access":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
+    return payload
+
+
+def _get_current_user(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)) -> dict:
+    payload = _decode_access_token(credentials.credentials)
+    payload["_token"] = credentials.credentials
+    return payload
+
+
+def _require_internal_service_token(
+    x_internal_service_token: str | None = Header(default=None, alias="X-Internal-Service-Token"),
+) -> None:
+    if not x_internal_service_token or not secrets.compare_digest(
+        x_internal_service_token,
+        settings.INTERNAL_SERVICE_TOKEN,
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid internal service token")
 
 
 # ── Internal: index a product ────────────────────────────────
 
 @router.post("/internal/embed", status_code=status.HTTP_202_ACCEPTED, tags=["internal"])
-async def generate_embeddings(payload: EmbedRequest):
+async def generate_embeddings(
+    payload: EmbedRequest,
+    _=Depends(_require_internal_service_token),
+):
     await embed_and_store(str(payload.product_id), payload.name, payload.description)
     return {"queued": True, "product_id": str(payload.product_id)}
 
 
 @router.post("/internal/embed-all", status_code=status.HTTP_202_ACCEPTED, tags=["internal"])
-async def embed_all_products():
+async def embed_all_products(_=Depends(_require_internal_service_token)):
     """
     Bulk-index all active products from product service into FAISS.
     Call this once after deploying to seed the recommendation index.
@@ -50,7 +71,10 @@ async def embed_all_products():
                     params={"is_active": True, "size": 100, "page": page},
                 )
                 if r.status_code != 200:
-                    break
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail="Failed to fetch products from product service",
+                    )
                 data = r.json()
                 products = data.get("items", [])
                 if not products:
@@ -66,9 +90,14 @@ async def embed_all_products():
                 if page * 100 >= total:
                     break
                 page += 1
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("embed-all failed: %s", exc)
-        return {"indexed": indexed, "error": str(exc)}
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to synchronize product embeddings",
+        ) from exc
     return {"indexed": indexed}
 
 
@@ -148,17 +177,22 @@ async def recommend_products(top_n: int = Query(default=5, ge=1, le=20)):
 async def user_recommendations(
     user_id: uuid.UUID,
     top_n: int = Query(default=5, ge=1, le=20),
+    current_user: dict = Depends(_get_current_user),
 ):
     """
     Personalised recommendations based on user purchase history.
     Fetches user's orders, extracts purchased products, averages their embeddings,
     then finds nearest neighbours in FAISS.
     """
+    if current_user["sub"] != str(user_id) and current_user.get("role") not in {"admin", "staff"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(
-                f"http://order_service:8004/orders",
+                f"{settings.ORDER_SERVICE_URL}/orders",
                 params={"user_id": str(user_id), "status": "delivered", "size": 20},
+                headers={"Authorization": f"Bearer {current_user['_token']}"},
             )
             if r.status_code != 200:
                 raise Exception("Could not fetch orders")
