@@ -10,13 +10,14 @@ export default function ProductList() {
     const [params, setParams] = useSearchParams()
     const q = params.get('q') || ''
     const page = parseInt(params.get('page') || '1')
+    const aiMode = params.get('ai') === '1'
 
     const [minPrice, setMinPrice] = useState('')
     const [maxPrice, setMaxPrice] = useState('')
     const [inStockOnly, setInStockOnly] = useState(false)
     const [showFilters, setShowFilters] = useState(false)
     const [selectedCategories, setSelectedCategories] = useState<string[]>([])
-
+    const [aiSummary, setAiSummary] = useState<string | null>(null)
     const { data: categories = [] } = useQuery<Category[]>({
         queryKey: ['categories'],
         queryFn: () => productService.listCategories(),
@@ -34,9 +35,30 @@ export default function ProductList() {
     }
 
     const { data, isLoading } = useQuery<any>({
-        queryKey: ['products', 'search', q, page, minPrice, maxPrice, inStockOnly, selectedCategories],
-        queryFn: () =>
-            productService.filter({
+        queryKey: ['products', 'search', q, page, minPrice, maxPrice, inStockOnly, selectedCategories, aiMode],
+        queryFn: async () => {
+            // AI-powered search: parse intent first, then apply extracted filters
+            if (aiMode && q) {
+                try {
+                    const intent = await productService.parseSearchIntent(q)
+                    const f = intent.filters || {}
+                    setAiSummary(`AI understood: looking for "${intent.rewritten_query}"${f.category ? ` in ${f.category}` : ''}${f.max_price ? ` under ₹${f.max_price}` : ''}${f.min_price ? ` above ₹${f.min_price}` : ''}`)
+                    return productService.filter({
+                        q: intent.rewritten_query || q,
+                        categories: f.category ? [f.category] : (selectedCategories.length > 0 ? selectedCategories : null),
+                        min_price: f.min_price ?? (minPrice ? parseFloat(minPrice) : null),
+                        max_price: f.max_price ?? (maxPrice ? parseFloat(maxPrice) : null),
+                        in_stock_only: inStockOnly,
+                        page,
+                        size: 20,
+                    })
+                } catch {
+                    setAiSummary(null)
+                    // Fallback to normal search
+                }
+            }
+            setAiSummary(null)
+            return productService.filter({
                 q,
                 categories: selectedCategories.length > 0 ? selectedCategories : null,
                 min_price: minPrice ? parseFloat(minPrice) : null,
@@ -44,7 +66,8 @@ export default function ProductList() {
                 in_stock_only: inStockOnly,
                 page,
                 size: 20,
-            }),
+            })
+        },
     })
 
     const setPage = (p: number) => setParams(prev => { prev.set('page', String(p)); return prev })
@@ -68,6 +91,16 @@ export default function ProductList() {
                     {showFilters ? '✕ Hide Filters' : '⚙ Filters'}
                 </button>
             </div>
+
+            {/* AI search summary */}
+            {aiSummary && (
+                <div className="w-full md:col-span-2 -mt-2">
+                    <div className="inline-flex items-center gap-2 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 text-sm px-3 py-1.5 rounded-full border border-purple-200 dark:border-purple-700">
+                        <span>✨</span>
+                        <span>{aiSummary}</span>
+                    </div>
+                </div>
+            )}
 
             {/* Filters Sidebar — always visible on md+, toggle on mobile */}
             <aside className={`md:w-64 md:shrink-0 space-y-4 ${showFilters ? 'block' : 'hidden md:block'}`}>

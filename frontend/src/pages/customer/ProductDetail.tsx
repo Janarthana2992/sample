@@ -82,6 +82,15 @@ export default function ProductDetail() {
         enabled: !!id,
     })
 
+    const { data: boughtTogether } = useQuery<{ items: SimilarProduct[] }>({
+        queryKey: ['bought-together', id],
+        queryFn: async (): Promise<{ items: SimilarProduct[] }> => {
+            const response = await aiClient.get(`/recommend/frequently-bought-together/${id}`, { params: { top_n: 4 } })
+            return response.data
+        },
+        enabled: !!id,
+    })
+
     const addMutation = useMutation({
         mutationFn: () => cartService.addToCart(id!, quantity),
         onSuccess: async () => {
@@ -278,6 +287,47 @@ export default function ProductDetail() {
                 <h2 className="text-lg font-bold text-gray-900 mb-4">Description</h2>
                 <div className="prose prose-sm text-gray-700 max-w-none whitespace-pre-wrap">{product.description}</div>
             </div>
+
+            {/* Frequently Bought Together */}
+            {boughtTogether && boughtTogether.items.filter(i => i.product_id !== id).length > 0 && (
+                <section>
+                    <h2 className="text-lg font-bold text-gray-900 mb-4">Frequently Bought Together</h2>
+                    <div className="flex gap-3 overflow-x-auto pb-2 items-start">
+                        {/* Current product */}
+                        <div className="shrink-0 w-36 rounded-xl border-2 border-blue-500 overflow-hidden bg-white">
+                            <div className="w-full aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
+                                {product.images[0]
+                                    ? <img src={product.images[0].url} alt={product.name} className="w-full h-full object-cover" />
+                                    : <span className="text-3xl">📦</span>
+                                }
+                            </div>
+                            <div className="p-2">
+                                <p className="text-xs font-semibold text-gray-800 line-clamp-2">{product.name}</p>
+                                <p className="text-xs font-bold text-gray-900 mt-1">₹{product.selling_price.toLocaleString('en-IN')}</p>
+                            </div>
+                        </div>
+                        {boughtTogether.items.filter(i => i.product_id !== id).map((item) => (
+                            <div key={item.product_id} className="flex items-start gap-3">
+                                <span className="text-gray-400 text-xl mt-12 shrink-0">+</span>
+                                <Link to={`/products/${item.product_id}`} className="shrink-0 w-36 rounded-xl border border-gray-200 hover:shadow-md transition-shadow overflow-hidden bg-white">
+                                    <div className="w-full aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
+                                        {item.image_url
+                                            ? <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                                            : <span className="text-3xl">📦</span>
+                                        }
+                                    </div>
+                                    <div className="p-2">
+                                        <p className="text-xs font-semibold text-gray-800 line-clamp-2">{item.name || 'View Product'}</p>
+                                        {item.selling_price && (
+                                            <p className="text-xs font-bold text-gray-900 mt-1">₹{Number(item.selling_price).toLocaleString('en-IN')}</p>
+                                        )}
+                                    </div>
+                                </Link>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
 
             {(similarLoading || similarItems.length > 0) && (
                 <section>

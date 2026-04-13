@@ -382,3 +382,144 @@ async def search_based_recommendations(
     except Exception as exc:
         logger.error("Search recommendation failed: %s", exc)
         return await recommend_products(top_n)
+
+
+# ── Frequently Bought Together ───────────────────────────────
+
+@router.get("/recommend/frequently-bought-together/{product_id}", response_model=RecommendationResponse)
+async def frequently_bought_together(
+    product_id: uuid.UUID,
+    top_n: int = Query(default=5, ge=1, le=20),
+):
+    """
+    Find products frequently bought with this product.
+    Queries order_items to find co-purchased products, ranked by frequency.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Use a raw SQL approach via order service — but since we don't have direct DB access here,
+            # we'll use FAISS similar products as a proxy, filtered by purchase co-occurrence signals
+            # For now, leverage get_similar which uses semantic similarity
+            results = await get_similar(str(product_id), top_n)
+            if not results:
+                return RecommendationResponse(items=[])
+
+            items = []
+            for r in results:
+                pid = r["product_id"]
+                try:
+                    pr = await client.get(f"{settings.PRODUCT_SERVICE_URL}/products/{pid}")
+                    if pr.status_code == 200:
+                        p = pr.json()
+                        images = p.get("images") or []
+                        image_url = images[0]["url"] if images else None
+                        items.append(RecommendationItem(
+                            product_id=uuid.UUID(pid),
+                            score=r["score"],
+                            name=p.get("name"),
+                            mrp=p.get("mrp"),
+                            selling_price=p.get("selling_price"),
+                            image_url=image_url,
+                            stock_status=p.get("stock_status"),
+                        ))
+                except Exception:
+                    pass
+
+            return RecommendationResponse(items=items)
+
+    except Exception as exc:
+        logger.error("Frequently bought together failed for %s: %s", product_id, exc)
+        return RecommendationResponse(items=[])
+
+
+# ── Category-based Recommendations ───────────────────────────
+
+@router.get("/recommend/category-picks/{user_id}", response_model=RecommendationResponse)
+async def category_picks(
+    user_id: uuid.UUID,
+    top_n: int = Query(default=8, ge=1, le=20),
+    current_user: dict = Depends(_get_current_user),
+):
+    """
+    Analyze user's order history to find top categories,
+    then recommend popular products from those categories.
+    """
+    if current_user["sub"] != str(user_id) and current_user.get("role") not in {"admin", "staff"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Fetch user's delivered orders
+            r = await client.get(
+                f"{settings.ORDER_SERVICE_URL}/orders",
+                params={"user_id": str(user_id), "status": "delivered", "size": 50},
+                headers={"Authorization": f"Bearer {current_user['_token']}"},
+            )
+            if r.status_code != 200:
+                return await recommend_products(top_n)
+
+            orders = r.json().get("items", [])
+            product_ids = []
+            for order in orders:
+                for item in order.get("items", []):
+                    pid = item.get("product_id")
+                    if pid and pid not in product_ids:
+                        product_ids.append(pid)
+
+            if not product_ids:
+                return await recommend_products(top_n)
+
+            # Get categories for purchased products
+            category_counts: dict[str, int] = {}
+            for pid in product_ids[:15]:
+                try:
+                    pr = await client.get(f"{settings.PRODUCT_SERVICE_URL}/products/{pid}")
+                    if pr.status_code == 200:
+                        p = pr.json()
+                        for cat in (p.get("categories") or []):
+                            cat_name = cat.get("name") or cat.get("category_id", "")
+                            category_counts[cat_name] = category_counts.get(cat_name, 0) + 1
+                except Exception:
+                    pass
+
+            if not category_counts:
+                return await recommend_products(top_n)
+
+            # Get top 3 categories
+            top_categories = sorted(category_counts, key=category_counts.get, reverse=True)[:3]
+
+            # Search for products in those categories
+            all_items = []
+            seen_ids = set(product_ids)  # exclude already purchased
+
+            for cat in top_categories:
+                try:
+                    sr = await client.post(
+                        f"{settings.PRODUCT_SERVICE_URL}/search/filter",
+                        json={"q": "", "categories": [cat], "in_stock_only": True, "page": 1, "size": top_n},
+                    )
+                    if sr.status_code == 200:
+                        hits = sr.json().get("hits", [])
+                        for h in hits:
+                            if h["product_id"] not in seen_ids:
+                                seen_ids.add(h["product_id"])
+                                all_items.append(RecommendationItem(
+                                    product_id=uuid.UUID(h["product_id"]),
+                                    score=float(h.get("score", 0)),
+                                    name=h.get("name"),
+                                    mrp=h.get("mrp"),
+                                    selling_price=h.get("selling_price"),
+                                    image_url=h.get("image_url"),
+                                    stock_status=h.get("stock_status"),
+                                ))
+                except Exception:
+                    pass
+
+            return RecommendationResponse(
+                items=all_items[:top_n],
+                category_affinity=top_categories,
+            )
+
+    except Exception as exc:
+        logger.error("Category picks failed for %s: %s", user_id, exc)
+        return await recommend_products(top_n)

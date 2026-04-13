@@ -107,6 +107,9 @@ CREATE TABLE IF NOT EXISTS products (
     promotion_priority INTEGER NOT NULL DEFAULT 0,
     promotion_badge VARCHAR(60),
     sales_count     INTEGER NOT NULL DEFAULT 0,
+    avg_rating      NUMERIC(3,2) NOT NULL DEFAULT 0,
+    review_count    INTEGER NOT NULL DEFAULT 0,
+    bayesian_rating NUMERIC(5,4) NOT NULL DEFAULT 0,
     es_synced_at    TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ
@@ -335,6 +338,9 @@ CREATE TABLE IF NOT EXISTS orders (
             'refunded'
         )
     ),
+    razorpay_order_id VARCHAR(100),
+    razorpay_payment_id VARCHAR(100),
+    razorpay_signature VARCHAR(255),
     estimated_delivery DATE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ

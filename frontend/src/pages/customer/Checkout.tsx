@@ -6,7 +6,9 @@ import toast from 'react-hot-toast'
 import { orderService } from '../../services/orders'
 import { cartService } from '../../services/cart'
 import { useCartStore } from '../../store/cartStore'
+import { useAuthStore } from '../../store/authStore'
 import { LoadingSpinner } from '../../components/common/LoadingSpinner'
+import { AddressAutocomplete } from '../../components/common/AddressAutocomplete'
 import type { Address } from '../../types'
 
 const STEPS = ['Cart Review', 'Shipping', 'Payment', 'Confirm']
@@ -27,12 +29,14 @@ export default function Checkout() {
     const [paymentMethod, setPaymentMethod] = useState('upi')
     const [showNewAddress, setShowNewAddress] = useState(false)
     const { clearCart } = useCartStore()
+    const { user } = useAuthStore()
     const navigate = useNavigate()
 
-    const { register, handleSubmit, formState: { errors } } = useForm<AddressForm>()
+    const { register, handleSubmit, formState: { errors }, setValue } = useForm<AddressForm>()
 
     const { data: cart, isLoading: cartLoading } = useQuery({ queryKey: ['cart'], queryFn: cartService.getCart })
     const { data: addresses, refetch: refetchAddresses } = useQuery({ queryKey: ['addresses'], queryFn: orderService.listAddresses })
+    const { data: paymentConfig } = useQuery({ queryKey: ['payment-config'], queryFn: orderService.getPaymentConfig })
 
     const addAddressMutation = useMutation({
         mutationFn: orderService.createAddress,
@@ -49,8 +53,47 @@ export default function Checkout() {
         mutationFn: () => orderService.checkout(selectedAddressId, paymentMethod),
         onSuccess: (order) => {
             clearCart()
-            toast.success('Order placed successfully!')
-            navigate(`/orders/${order.order_id}`)
+
+            // For non-COD with Razorpay configured, open payment modal
+            if (paymentMethod !== 'cod' && order.razorpay_order_id && paymentConfig?.razorpay_key_id && window.Razorpay) {
+                const options = {
+                    key: paymentConfig.razorpay_key_id,
+                    amount: Math.round(Number(order.total_price) * 100),
+                    currency: 'INR',
+                    name: 'ShopHere',
+                    description: `Order #${order.order_id.slice(0, 8).toUpperCase()}`,
+                    order_id: order.razorpay_order_id,
+                    prefill: {
+                        name: user?.full_name || '',
+                        email: user?.email || '',
+                    },
+                    handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+                        try {
+                            await orderService.verifyPayment(order.order_id, {
+                                razorpay_order_id: response.razorpay_order_id,
+                                razorpay_payment_id: response.razorpay_payment_id,
+                                razorpay_signature: response.razorpay_signature,
+                            })
+                            toast.success('Payment successful!')
+                        } catch {
+                            toast.error('Payment verification failed. You can retry from order details.')
+                        }
+                        navigate(`/orders/${order.order_id}`)
+                    },
+                    modal: {
+                        ondismiss: () => {
+                            toast('Payment pending. You can complete it from order details.', { icon: '⏳' })
+                            navigate(`/orders/${order.order_id}`)
+                        },
+                    },
+                    theme: { color: '#2563eb' },
+                }
+                const rzp = new window.Razorpay(options)
+                rzp.open()
+            } else {
+                toast.success('Order placed successfully!')
+                navigate(`/orders/${order.order_id}`)
+            }
         },
         onError: (err: any) => toast.error(err.response?.data?.detail || 'Checkout failed'),
     })
@@ -133,6 +176,18 @@ export default function Checkout() {
 
                     {showNewAddress && (
                         <form onSubmit={handleSubmit(d => addAddressMutation.mutate(d))} className="space-y-3 border-t pt-4">
+                            <div>
+                                <label className="label">Search Address (Google Maps)</label>
+                                <AddressAutocomplete
+                                    onPlaceSelected={(place) => {
+                                        setValue('address_line1', place.address_line1)
+                                        setValue('city', place.city)
+                                        setValue('state', place.state)
+                                        setValue('pincode', place.pincode)
+                                    }}
+                                    placeholder="Start typing to search..."
+                                />
+                            </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="label">Full Name</label>
@@ -203,9 +258,15 @@ export default function Checkout() {
                             </label>
                         ))}
                     </div>
-                    <p className="text-xs text-gray-500 bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
-                        💡 This is a demo platform. No real payments are processed.
-                    </p>
+                    {paymentConfig?.payment_enabled ? (
+                        <p className="text-xs text-gray-500 bg-green-50 border border-green-200 p-3 rounded-lg">
+                            🔒 Payments are securely processed via Razorpay. For COD, no online payment is required.
+                        </p>
+                    ) : (
+                        <p className="text-xs text-gray-500 bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
+                            💡 Payment gateway is in test mode. No real payments will be processed.
+                        </p>
+                    )}
                     <div className="flex gap-3">
                         <button onClick={() => setStep(1)} className="btn-secondary flex-1">← Back</button>
                         <button onClick={() => setStep(3)} className="btn-primary flex-1">Review Order</button>

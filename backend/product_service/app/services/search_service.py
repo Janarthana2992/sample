@@ -12,19 +12,21 @@ PRODUCT_MAPPING = {
     "mappings": {
         "properties": {
             "product_id": {"type": "keyword"},
-            "name": {"type": "text", "analyzer": "standard", "fields": {"keyword": {"type": "keyword"}}},
-            "description": {"type": "text", "analyzer": "standard"},
+            "name": {"type": "text", "analyzer": "english", "fields": {"keyword": {"type": "keyword"}}},
+            "description": {"type": "text", "analyzer": "english"},
             "sku": {"type": "keyword"},
             "category_ids": {"type": "keyword"},
             "tags": {"type": "keyword"},
             "mrp": {"type": "double"},
             "selling_price": {"type": "double"},
             "rating": {"type": "float"},
+            "review_count": {"type": "integer"},
+            "bayesian_rating": {"type": "float"},
             "stock_status": {"type": "keyword"},
             "is_active": {"type": "boolean"},
             "sales_count": {"type": "integer"},
             "image_url": {"type": "keyword", "index": False},
-            "category_names": {"type": "text", "analyzer": "standard"},
+            "category_names": {"type": "text", "analyzer": "english"},
         }
     },
     "settings": {
@@ -229,6 +231,34 @@ class ElasticsearchService:
         except Exception as exc:
             logger.error("Elasticsearch autocomplete error: %s", exc)
             return []
+
+    async def top_rated(self, category: Optional[str] = None, size: int = 10) -> Dict[str, Any]:
+        """Return products sorted by bayesian_rating (which penalises few reviews)."""
+        must = [
+            {"term": {"is_active": True}},
+            {"range": {"review_count": {"gte": 1}}},  # at least 1 review
+        ]
+        if category:
+            must.append({"match": {"category_names": {"query": category, "operator": "and"}}})
+
+        body = {
+            "query": {"bool": {"must": must}},
+            "sort": [
+                {"bayesian_rating": {"order": "desc"}},
+                {"review_count": {"order": "desc"}},
+            ],
+            "size": size,
+        }
+        try:
+            response = await self.client.search(index=INDEX_NAME, body=body)
+            hits = response["hits"]
+            return {
+                "total": hits["total"]["value"],
+                "hits": [{**h["_source"], "score": 0} for h in hits["hits"]],
+            }
+        except Exception as exc:
+            logger.error("Elasticsearch top_rated error: %s", exc)
+            return {"total": 0, "hits": []}
 
     async def close(self):
         await self.client.close()

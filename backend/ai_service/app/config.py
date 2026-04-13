@@ -11,11 +11,20 @@ class Settings(BaseSettings):
     INTERNAL_SERVICE_TOKEN: str
     PRODUCT_SERVICE_URL: str = "http://localhost:8002"
     ORDER_SERVICE_URL: str = "http://order_service:8004"
+    CART_SERVICE_URL: str = "http://cart_service:8003"
     FAISS_INDEX_PATH: str = "/app/faiss_store"
     MODEL_NAME: str = "all-MiniLM-L6-v2"
     ENVIRONMENT: str = "development"
     FRONTEND_URL: str = "http://localhost:5173"
     TOP_N: int = 5
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    LOCAL_MODEL_REPO: str = "Qwen/Qwen2.5-3B-Instruct-GGUF"
+    LOCAL_MODEL_FILE: str = "qwen2.5-3b-instruct-q4_k_m.gguf"
+    REDIS_URL: str = "redis://localhost:6379/1"
+    CHAT_SESSION_TTL: int = 1800
 
     @field_validator("JWT_SECRET_KEY")
     @classmethod

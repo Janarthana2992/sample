@@ -54,6 +54,7 @@ export function Header() {
     const [isSearchFocused, setIsSearchFocused] = useState(false)
     const [showUserMenu, setShowUserMenu] = useState(false)
     const [showMobileSearch, setShowMobileSearch] = useState(false)
+    const [aiSearchEnabled, setAiSearchEnabled] = useState(false)
     const [dark, toggleDark] = useDarkMode()
     const debounceRef = useRef<ReturnType<typeof setTimeout>>()
     const navigate = useNavigate()
@@ -84,7 +85,9 @@ export function Header() {
         if (query.trim()) {
             const updated = trackRecentSearch(query.trim())
             setRecentSearches(updated.slice(0, 3))
-            navigate(`/products?q=${encodeURIComponent(query.trim())}`)
+            const searchParams = new URLSearchParams({ q: query.trim() })
+            if (aiSearchEnabled) searchParams.set('ai', '1')
+            navigate(`/products?${searchParams.toString()}`)
             setShowSuggestions(false)
             setShowMobileSearch(false)
         }
@@ -103,6 +106,17 @@ export function Header() {
     const searchBar = (extraClass = '') => (
         <form onSubmit={handleSearch} className={`relative ${extraClass}`}>
             <div className="flex">
+                <button
+                    type="button"
+                    onClick={() => setAiSearchEnabled(v => !v)}
+                    className={`px-2 shrink-0 rounded-l-lg border border-r-0 text-sm transition-colors ${aiSearchEnabled
+                        ? 'bg-purple-100 border-purple-300 text-purple-700 dark:bg-purple-900/30 dark:border-purple-600 dark:text-purple-300'
+                        : 'bg-gray-50 border-gray-300 text-gray-400 hover:text-gray-600 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-500'
+                        }`}
+                    title={aiSearchEnabled ? 'AI search ON — click to disable' : 'Enable AI-powered search'}
+                >
+                    ✨
+                </button>
                 <input
                     type="search"
                     value={query}
@@ -118,8 +132,8 @@ export function Header() {
                         }
                         if (suggestions.length > 0) setShowSuggestions(true)
                     }}
-                    placeholder="Search products..."
-                    className="input rounded-r-none flex-1 min-w-0"
+                    placeholder={aiSearchEnabled ? 'Ask anything... e.g. "gifts under ₹500"' : 'Search products...'}
+                    className="input rounded-none flex-1 min-w-0"
                     autoFocus={showMobileSearch}
                 />
                 <button type="submit" className="btn-primary rounded-l-none px-4 shrink-0">🔍</button>

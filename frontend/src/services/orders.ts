@@ -15,6 +15,12 @@ export const orderService = {
     checkout: (address_id: string, payment_method: string) =>
         orderClient.post<Order>('/orders', { address_id, payment_method }).then(r => r.data),
 
+    verifyPayment: (orderId: string, data: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) =>
+        orderClient.post<Order>(`/orders/${orderId}/verify-payment`, data).then(r => r.data),
+
+    getPaymentConfig: () =>
+        orderClient.get<{ razorpay_key_id: string | null; payment_enabled: boolean }>('/payment/config').then(r => r.data),
+
     updateStatus: (orderId: string, data: object) =>
         orderClient.patch<Order>(`/orders/${orderId}/status`, data).then(r => r.data),
 

@@ -13,6 +13,5 @@ uploads/
 faiss_store/
 *.pem
 *.key
-prd.md
-README.md
-docs/
+backend.zip
+nul

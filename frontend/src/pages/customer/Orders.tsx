@@ -1,8 +1,20 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { orderService } from '../../services/orders'
+import { aiClient } from '../../services/api'
 import { LoadingSpinner } from '../../components/common/LoadingSpinner'
+import { useAuthStore } from '../../store/authStore'
 import type { Order } from '../../types'
+
+type RecItem = {
+    product_id: string
+    score: number
+    name?: string
+    mrp?: number
+    selling_price?: number
+    image_url?: string
+    stock_status?: string
+}
 
 const STATUS_COLORS: Record<string, string> = {
     pending: 'bg-yellow-100 text-yellow-700',
@@ -13,9 +25,23 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export default function Orders() {
+    const { user } = useAuthStore()
+
     const { data, isLoading } = useQuery({
         queryKey: ['orders'],
         queryFn: () => orderService.listOrders({ size: 20 }),
+    })
+
+    const hasOrders = data && data.items.length > 0
+
+    const { data: recommendations } = useQuery({
+        queryKey: ['order-recommendations', user?.user_id],
+        queryFn: async () => {
+            const r = await aiClient.get(`/recommend/user/${user!.user_id}`, { params: { top_n: 8 } })
+            return r.data.items as RecItem[]
+        },
+        enabled: !!user && !!hasOrders,
+        staleTime: 5 * 60_000,
     })
 
     if (isLoading) return <LoadingSpinner />
@@ -61,6 +87,41 @@ export default function Orders() {
                         </div>
                     ))}
                 </div>
+            )}
+
+            {/* Order-based recommendations */}
+            {recommendations && recommendations.length > 0 && (
+                <section className="mt-8">
+                    <h2 className="text-xl font-bold text-gray-900 mb-1">Recommended Based on Your Orders</h2>
+                    <p className="text-sm text-gray-500 mb-4">Products similar to what you've purchased</p>
+                    <div className="flex gap-4 overflow-x-auto pb-2">
+                        {recommendations.map(rec => (
+                            <Link
+                                key={rec.product_id}
+                                to={`/products/${rec.product_id}`}
+                                className="shrink-0 w-44 bg-white rounded-xl border border-gray-200 hover:shadow-md transition-shadow overflow-hidden"
+                            >
+                                <div className="w-full aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
+                                    {rec.image_url
+                                        ? <img src={rec.image_url} alt={rec.name} className="w-full h-full object-cover" />
+                                        : <span className="text-4xl">📦</span>
+                                    }
+                                </div>
+                                <div className="p-2">
+                                    <p className="text-xs font-semibold text-gray-800 line-clamp-2 leading-snug mb-1">{rec.name || 'View Product'}</p>
+                                    {rec.selling_price && (
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-sm font-bold text-gray-900">₹{Number(rec.selling_price).toLocaleString('en-IN')}</span>
+                                            {rec.mrp && rec.mrp > rec.selling_price && (
+                                                <span className="text-xs text-gray-400 line-through">₹{Number(rec.mrp).toLocaleString('en-IN')}</span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </Link>
+                        ))}
+                    </div>
+                </section>
             )}
         </div>
     )

@@ -176,6 +176,8 @@ export interface Order {
     payment_status: string
     tracking_number?: string
     estimated_delivery?: string
+    razorpay_order_id?: string
+    razorpay_payment_id?: string
     items: OrderItem[]
     shipping_address?: Address
     status_history: StatusHistory[]

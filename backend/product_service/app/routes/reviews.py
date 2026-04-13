@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.db.database import get_db
 from app.models.product import Review, ReviewReply
 from app.schemas.review import PaginatedReviews, ReviewCreate, ReviewOut, ReviewUpdate, ReviewReplyCreate, ReviewReplyOut
+from app.services.product_service import refresh_product_rating
 from app.utils.rbac import get_current_user, require_roles, require_permission
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
@@ -66,6 +67,8 @@ async def create_review(
     db.add(review)
     await db.commit()
     await db.refresh(review)
+    await refresh_product_rating(db, payload.product_id)
+    await db.commit()
     return review
 
 
@@ -184,6 +187,8 @@ async def update_review(
     review.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(review)
+    await refresh_product_rating(db, review.product_id)
+    await db.commit()
     return review
 
 
@@ -200,5 +205,8 @@ async def delete_review(
     # Admin can delete any; customer can only delete their own
     if user.role != "admin" and review.user_id != user.user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    product_id = review.product_id
     await db.delete(review)
+    await db.commit()
+    await refresh_product_rating(db, product_id)
     await db.commit()

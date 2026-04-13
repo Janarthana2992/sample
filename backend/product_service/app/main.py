@@ -95,10 +95,24 @@ async def reindex_all(_=Depends(_require_internal_service_token)):
     from sqlalchemy.orm import selectinload
     from app.db.database import AsyncSessionLocal
     from app.models.product import Product, Category
-    from app.services.product_service import _index_to_es
+    from app.services.product_service import _index_to_es, refresh_product_rating
 
     count = 0
     async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Product).options(
+                selectinload(Product.images),
+                selectinload(Product.product_categories),
+            )
+        )
+        products = result.scalars().all()
+        # Refresh all product ratings from reviews first
+        for product in products:
+            await refresh_product_rating(db, product.product_id)
+        await db.commit()
+        # Expire cached objects so re-fetch picks up new values
+        db.expire_all()
+        # Re-fetch to get updated rating columns
         result = await db.execute(
             select(Product).options(
                 selectinload(Product.images),

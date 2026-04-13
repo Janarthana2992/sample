@@ -83,3 +83,16 @@ async def autocomplete(
             combined.append(s)
 
     return AutocompleteResponse(suggestions=combined[:8])
+
+
+@router.get("/top-rated", response_model=SearchResponse)
+async def top_rated_products(
+    category: Optional[str] = Query(default=None),
+    size: int = Query(default=10, ge=1, le=30),
+):
+    """Return products sorted by Bayesian weighted rating (penalises few reviews)."""
+    result = await es_service.top_rated(category=category, size=size)
+    return SearchResponse(
+        total=result["total"], page=1, size=size,
+        hits=result["hits"],
+    )

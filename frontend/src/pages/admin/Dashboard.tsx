@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { orderService } from '../../services/orders'
-import { productService } from '../../services/products'
 import { LoadingSpinner } from '../../components/common/LoadingSpinner'
-import { useEffect, useRef, useState } from 'react'
+import { useState, useCallback } from 'react'
+import { GoogleMap, useJsApiLoader, MarkerF } from '@react-google-maps/api'
 
 function KPICard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
     return (
@@ -32,41 +32,12 @@ export default function AdminDashboard() {
         queryFn: orderService.getPincodeMap,
     })
 
-    const mapRef = useRef<HTMLDivElement>(null)
-    const [mapboxToken] = useState(import.meta.env.VITE_MAPBOX_TOKEN || '')
+    const mapRef = useCallback(() => { }, [])
+    const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
 
-    useEffect(() => {
-        if (!mapRef.current || !mapboxToken || !pincodeData?.length) return
-        let map: any
-        import('mapbox-gl').then(({ default: mapboxgl }) => {
-            (mapboxgl as any).accessToken = mapboxToken
-            map = new mapboxgl.Map({
-                container: mapRef.current!,
-                style: 'mapbox://styles/mapbox/light-v11',
-                center: [79, 22],
-                zoom: 4,
-            })
-            map.on('load', () => {
-                const features = pincodeData.map((p: any) => ({
-                    type: 'Feature',
-                    geometry: { type: 'Point', coordinates: [80 + Math.random() * 10, 20 + Math.random() * 10] },
-                    properties: { pincode: p.pincode, city: p.city, order_count: p.order_count },
-                }))
-                map.addSource('pincodes', { type: 'geojson', data: { type: 'FeatureCollection', features } })
-                map.addLayer({
-                    id: 'pincode-circles',
-                    type: 'circle',
-                    source: 'pincodes',
-                    paint: {
-                        'circle-radius': ['interpolate', ['linear'], ['get', 'order_count'], 1, 6, 10, 12, 50, 20],
-                        'circle-color': ['step', ['get', 'order_count'], '#22c55e', 11, '#f59e0b', 51, '#ef4444'],
-                        'circle-opacity': 0.8,
-                    },
-                })
-            })
-        })
-        return () => map?.remove()
-    }, [mapboxToken, pincodeData])
+    const { isLoaded: mapsLoaded } = useJsApiLoader({
+        googleMapsApiKey,
+    })
 
     if (kpisLoading) return <LoadingSpinner />
 
@@ -119,13 +90,31 @@ export default function AdminDashboard() {
             {/* Delivery Map */}
             <div className="card">
                 <h2 className="text-lg font-bold text-gray-900 mb-4">Pincode Delivery Map</h2>
-                {mapboxToken ? (
-                    <div ref={mapRef} className="w-full h-96 rounded-xl overflow-hidden" />
+                {googleMapsApiKey && mapsLoaded ? (
+                    <GoogleMap
+                        mapContainerStyle={{ width: '100%', height: '384px', borderRadius: '0.75rem' }}
+                        center={{ lat: 22, lng: 79 }}
+                        zoom={5}
+                    >
+                        {pincodeData?.map((p: any, i: number) => {
+                            // Use pincode-based approximate position (India range)
+                            const pinNum = parseInt(p.pincode, 10)
+                            const lat = 8 + ((pinNum % 10000) / 10000) * 28
+                            const lng = 68 + ((pinNum % 100000) / 100000) * 30
+                            return (
+                                <MarkerF
+                                    key={i}
+                                    position={{ lat, lng }}
+                                    title={`${p.city || p.pincode}: ${p.order_count} orders`}
+                                />
+                            )
+                        })}
+                    </GoogleMap>
                 ) : (
                     <div className="bg-gray-100 rounded-xl h-64 flex items-center justify-center text-gray-500 text-sm">
                         <div className="text-center">
                             <p className="text-2xl mb-2">🗺️</p>
-                            <p>Set <code className="bg-gray-200 px-1 rounded">VITE_MAPBOX_TOKEN</code> to enable the map</p>
+                            <p>Set <code className="bg-gray-200 px-1 rounded">VITE_GOOGLE_MAPS_API_KEY</code> to enable the map</p>
                             {pincodeData && pincodeData.length > 0 && (
                                 <p className="mt-2 text-xs">{pincodeData.length} pincodes with orders</p>
                             )}

@@ -42,6 +42,9 @@ class Order(Base):
     payment_method = Column(String(30))
     payment_status = Column(String(20), nullable=False, default="pending")
     estimated_delivery = Column(Date)
+    razorpay_order_id = Column(String(100), index=True)
+    razorpay_payment_id = Column(String(100))
+    razorpay_signature = Column(Text)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True))
 

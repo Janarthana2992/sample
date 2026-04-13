@@ -1,4 +1,5 @@
 import { productClient } from './api'
+import { aiClient } from './api'
 import type { Category, Deal, Paginated, Product, ProductVariant, Review, SearchResponse } from '../types'
 
 export const productService = {
@@ -54,6 +55,16 @@ export const productService = {
 
     autocomplete: (q: string) =>
         productClient.get<{ suggestions: string[] }>('/search/autocomplete', { params: { q } }).then(r => r.data),
+
+    // AI-powered smart search
+    parseSearchIntent: (query: string) =>
+        aiClient.post<{
+            search_terms: string
+            filters: { category?: string; min_price?: number; max_price?: number; color?: string; brand?: string }
+            intent: string
+            rewritten_query: string
+            original_query: string
+        }>('/search/parse-intent', { query }).then(r => r.data),
 
     // Deals
     listDeals: (params?: Record<string, unknown>) =>

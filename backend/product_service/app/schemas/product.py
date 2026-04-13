@@ -115,6 +115,8 @@ class ProductOut(BaseModel):
     promotion_priority: int
     promotion_badge: Optional[str]
     sales_count: int
+    avg_rating: Optional[Decimal] = None
+    review_count: int = 0
     images: List[ProductImageOut] = []
     created_at: datetime
 

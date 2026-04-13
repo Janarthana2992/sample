@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     ENVIRONMENT: str = "development"
     FRONTEND_URL: str = "http://localhost:5173"
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = ""
 
     @field_validator("JWT_SECRET_KEY")
     @classmethod

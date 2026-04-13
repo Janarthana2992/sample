@@ -8,6 +8,7 @@ const navItems = [
     { to: '/staff/reviews', label: '⭐ Reviews', module: 'reply_reviews' },
     { to: '/staff/stock', label: '📦 Stock', module: 'stock_management' },
     { to: '/staff/deals', label: '🏷️ Deals', module: 'deal_management' },
+    { to: '/staff/handoff', label: '💬 Live Chat', module: null },
 ]
 
 export function StaffLayout() {

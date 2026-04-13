@@ -17,7 +17,9 @@ class RecommendationItem(BaseModel):
     selling_price: Optional[float] = None
     image_url: Optional[str] = None
     stock_status: Optional[str] = None
+    because_of: Optional[str] = None  # source product name for context
 
 
 class RecommendationResponse(BaseModel):
     items: List[RecommendationItem]
+    category_affinity: Optional[List[str]] = None

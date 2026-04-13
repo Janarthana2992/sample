@@ -65,6 +65,8 @@ class OrderOut(BaseModel):
     payment_status: str
     tracking_number: Optional[str]
     estimated_delivery: Optional[date]
+    razorpay_order_id: Optional[str] = None
+    razorpay_payment_id: Optional[str] = None
     items: List[OrderItemOut] = []
     shipping_address: Optional[AddressOut] = None
     status_history: List[StatusHistoryOut] = []
@@ -98,4 +100,10 @@ class CheckoutRequest(BaseModel):
 class StatusUpdateRequest(BaseModel):
     status: str = Field(pattern="^(confirmed|dispatched|delivered|cancelled)$")
     tracking_number: Optional[str] = None
+
+
+class VerifyPaymentRequest(BaseModel):
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
     note: Optional[str] = None

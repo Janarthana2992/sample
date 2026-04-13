@@ -76,8 +76,9 @@ export default function Home() {
     }, [totalFeaturedPages])
 
     const { data: recommendations } = useQuery({
-        queryKey: ['recommendations', user?.user_id, ...recentViews.slice(0, 5), ...recentSearches.slice(0, 3)],
+        queryKey: ['recommendations', ...recentViews.slice(0, 5), ...recentSearches.slice(0, 3)],
         queryFn: async () => {
+            // Blend recent searches + recently viewed
             const recentSearchTerms = recentSearches.slice(0, 3)
             const searchBasedGroups = await Promise.all(
                 recentSearchTerms.map(async term => {
@@ -125,14 +126,6 @@ export default function Home() {
             const blended = mixRecommendations(searchBased, viewBased, 12)
             if (blended.length > 0) return blended
 
-            // Signal 3: purchase history (logged-in users)
-            if (user) {
-                try {
-                    const r = await aiClient.get(`/recommend/user/${user.user_id}`, { params: { top_n: 8 } })
-                    if (r.data.items?.length > 0) return r.data.items
-                } catch { /* fallthrough */ }
-            }
-
             // Fallback: trending by sales
             const r = await aiClient.get('/recommend/products', { params: { top_n: 8 } })
             return r.data.items
@@ -141,12 +134,67 @@ export default function Home() {
         gcTime: 60_000,
     })
 
+    // ── Order history-based recommendations (logged-in users) ──
+    const { data: orderBasedRecs } = useQuery({
+        queryKey: ['order-recommendations', user?.user_id],
+        queryFn: async () => {
+            const r = await aiClient.get(`/recommend/user/${user!.user_id}`, { params: { top_n: 8 } })
+            return (r.data.items || []) as RecommendationCardItem[]
+        },
+        enabled: !!user,
+        staleTime: 5 * 60_000,
+    })
+
+    // ── Category-based picks (logged-in users) ─────────────────
+    const { data: categoryPicks } = useQuery({
+        queryKey: ['category-picks', user?.user_id],
+        queryFn: async () => {
+            const r = await aiClient.get(`/recommend/category-picks/${user!.user_id}`, { params: { top_n: 8 } })
+            return r.data as { items: RecommendationCardItem[]; category_affinity?: string[] }
+        },
+        enabled: !!user,
+        staleTime: 5 * 60_000,
+    })
+
     const recLabel = (() => {
         if (recentViews.length > 0 && recentSearches.length > 0) return 'Based on Your Recent Searches & Views'
         if (recentViews.length > 0) return 'Based on Your Recent Views'
         if (recentSearches.length > 0) return 'Based on Your Recent Searches'
         return 'Recommended for You'
     })()
+
+    const RecCarousel = ({ items, label }: { items: RecommendationCardItem[]; label: string }) => (
+        <section>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">{label}</h2>
+            <div className="flex gap-4 overflow-x-auto pb-2">
+                {items.map((rec) => (
+                    <Link
+                        key={rec.product_id}
+                        to={`/products/${rec.product_id}`}
+                        className="shrink-0 w-44 bg-white rounded-xl border border-gray-200 hover:shadow-md transition-shadow overflow-hidden"
+                    >
+                        <div className="w-full aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
+                            {rec.image_url
+                                ? <img src={rec.image_url} alt={rec.name} className="w-full h-full object-cover" />
+                                : <span className="text-4xl">📦</span>
+                            }
+                        </div>
+                        <div className="p-2">
+                            <p className="text-xs font-semibold text-gray-800 line-clamp-2 leading-snug mb-1">{rec.name || 'View Product'}</p>
+                            {rec.selling_price && (
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-sm font-bold text-gray-900">₹{Number(rec.selling_price).toLocaleString('en-IN')}</span>
+                                    {rec.mrp && rec.mrp > rec.selling_price && (
+                                        <span className="text-xs text-gray-400 line-through">₹{Number(rec.mrp).toLocaleString('en-IN')}</span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </Link>
+                ))}
+            </div>
+        </section>
+    )
 
     return (
         <div className="space-y-12">
@@ -159,38 +207,26 @@ export default function Home() {
                 </Link>
             </section>
 
-            {/* Recommended */}
+            {/* Order history-based recommendations */}
+            {orderBasedRecs && orderBasedRecs.length > 0 && (
+                <RecCarousel items={orderBasedRecs} label="Based on Your Order History" />
+            )}
+
+            {/* Search & view-based recommendations */}
             {recommendations && recommendations.length > 0 && (
-                <section>
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">{recLabel}</h2>
-                    <div className="flex gap-4 overflow-x-auto pb-2">
-                        {recommendations.map((rec: any) => (
-                            <Link
-                                key={rec.product_id}
-                                to={`/products/${rec.product_id}`}
-                                className="shrink-0 w-44 bg-white rounded-xl border border-gray-200 hover:shadow-md transition-shadow overflow-hidden"
-                            >
-                                <div className="w-full aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
-                                    {rec.image_url
-                                        ? <img src={rec.image_url} alt={rec.name} className="w-full h-full object-cover" />
-                                        : <span className="text-4xl">📦</span>
-                                    }
-                                </div>
-                                <div className="p-2">
-                                    <p className="text-xs font-semibold text-gray-800 line-clamp-2 leading-snug mb-1">{rec.name || 'View Product'}</p>
-                                    {rec.selling_price && (
-                                        <div className="flex items-baseline gap-1">
-                                            <span className="text-sm font-bold text-gray-900">₹{Number(rec.selling_price).toLocaleString('en-IN')}</span>
-                                            {rec.mrp && rec.mrp > rec.selling_price && (
-                                                <span className="text-xs text-gray-400 line-through">₹{Number(rec.mrp).toLocaleString('en-IN')}</span>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            </Link>
-                        ))}
-                    </div>
-                </section>
+                <RecCarousel items={recommendations} label={recLabel} />
+            )}
+
+            {/* Category-based picks */}
+            {categoryPicks && categoryPicks.items.length > 0 && (
+                <RecCarousel
+                    items={categoryPicks.items}
+                    label={
+                        categoryPicks.category_affinity?.length
+                            ? `Popular in ${categoryPicks.category_affinity.slice(0, 2).join(' & ')}`
+                            : 'Popular in Your Categories'
+                    }
+                />
             )}
 
             {/* Featured Products */}

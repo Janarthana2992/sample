@@ -94,13 +94,14 @@ async def create_order(db: AsyncSession, user_id: str, payload: CheckoutRequest)
     estimated_delivery = (datetime.now(timezone.utc) + timedelta(days=5)).date()
 
     # 4. Create order (transactional)
+    is_cod = payload.payment_method == "cod"
     order = Order(
         user_id=uuid.UUID(user_id),
         total_price=total,
         status="pending",
         shipping_address_id=payload.address_id,
         payment_method=payload.payment_method,
-        payment_status="paid" if payload.payment_method != "cod" else "pending",
+        payment_status="pending",
         estimated_delivery=estimated_delivery,
     )
     db.add(order)
@@ -112,7 +113,18 @@ async def create_order(db: AsyncSession, user_id: str, payload: CheckoutRequest)
     db.add(OrderStatusHistory(order_id=order.order_id, to_status="pending"))
     await db.commit()
 
-    # 5. Clear cart (best-effort; order already committed)
+    # 5. Create Razorpay order for non-COD payments
+    if not is_cod and settings.RAZORPAY_KEY_ID:
+        try:
+            from app.services.payment_service import create_razorpay_order
+            amount_paise = int(total * 100)
+            rz_order = create_razorpay_order(amount_paise, str(order.order_id)[:40])
+            order.razorpay_order_id = rz_order["id"]
+            await db.commit()
+        except Exception as exc:
+            logger.warning("Failed to create Razorpay order for %s: %s", order.order_id, exc)
+
+    # 6. Clear cart (best-effort; order already committed)
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.delete(

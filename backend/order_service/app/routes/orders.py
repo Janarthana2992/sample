@@ -3,6 +3,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import Request
 from jose import JWTError, jwt
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,7 @@ from app.models.order import Address
 from app.schemas.order import (
     AddressCreate, AddressOut,
     CheckoutRequest, OrderOut, PaginatedOrders, StatusUpdateRequest,
+    VerifyPaymentRequest,
 )
 from app.services.order_service import (
     create_order, get_order, list_orders, update_order_status,
@@ -62,7 +64,8 @@ async def checkout(
     auth: dict = Depends(_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    return await create_order(db, auth["user_id"], payload)
+    order = await create_order(db, auth["user_id"], payload)
+    return order
 
 
 @router.get("/orders", response_model=PaginatedOrders)
@@ -110,6 +113,100 @@ async def update_status(
     if role == "staff" and "order_management" not in auth.get("permissions", []):
         raise HTTPException(status_code=403, detail="Missing permission: order_management")
     return await update_order_status(db, order_id, auth["user_id"], role, payload)
+
+
+# ── Payment verification ─────────────────────────────────────
+
+@router.post("/orders/{order_id}/verify-payment", response_model=OrderOut)
+async def verify_payment(
+    order_id: uuid.UUID,
+    payload: VerifyPaymentRequest,
+    auth: dict = Depends(_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.order import Order as OrderModel
+    from sqlalchemy.orm import selectinload
+
+    result = await db.execute(
+        select(OrderModel)
+        .where(OrderModel.order_id == order_id)
+        .options(selectinload(OrderModel.items), selectinload(OrderModel.shipping_address), selectinload(OrderModel.status_history))
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if str(order.user_id) != auth["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if order.payment_status == "paid":
+        return order
+
+    # Verify signature
+    from app.services.payment_service import verify_payment_signature
+    if not verify_payment_signature(
+        payload.razorpay_order_id,
+        payload.razorpay_payment_id,
+        payload.razorpay_signature,
+    ):
+        raise HTTPException(status_code=400, detail="Payment verification failed")
+
+    order.razorpay_payment_id = payload.razorpay_payment_id
+    order.razorpay_signature = payload.razorpay_signature
+    order.payment_status = "paid"
+    await db.commit()
+    await db.refresh(order, ["items", "shipping_address", "status_history"])
+    return order
+
+
+@router.post("/orders/webhook/razorpay", status_code=200, tags=["webhooks"])
+async def razorpay_webhook(request_obj: Request, db: AsyncSession = Depends(get_db)):
+    """Handle Razorpay webhook events. No auth — uses signature verification."""
+    from app.services.payment_service import verify_webhook_signature
+    from app.models.order import Order as OrderModel
+    import json as _json
+
+    body = await request_obj.body()
+    signature = request_obj.headers.get("x-razorpay-signature", "")
+
+    if not verify_webhook_signature(body, signature):
+        raise HTTPException(status_code=400, detail="Invalid webhook signature")
+
+    try:
+        event = _json.loads(body)
+    except _json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    event_type = event.get("event", "")
+    payment = event.get("payload", {}).get("payment", {}).get("entity", {})
+    rz_order_id = payment.get("order_id")
+
+    if not rz_order_id:
+        return {"status": "ignored"}
+
+    result = await db.execute(
+        select(OrderModel).where(OrderModel.razorpay_order_id == rz_order_id)
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        return {"status": "order_not_found"}
+
+    if event_type == "payment.captured" and order.payment_status != "paid":
+        order.razorpay_payment_id = payment.get("id")
+        order.payment_status = "paid"
+        await db.commit()
+    elif event_type == "payment.failed" and order.payment_status == "pending":
+        order.payment_status = "failed"
+        await db.commit()
+
+    return {"status": "ok"}
+
+
+@router.get("/payment/config", tags=["payment"])
+async def payment_config():
+    """Return Razorpay public key for frontend."""
+    return {
+        "razorpay_key_id": settings.RAZORPAY_KEY_ID or None,
+        "payment_enabled": bool(settings.RAZORPAY_KEY_ID),
+    }
 
 
 # ── Admin analytics ──────────────────────────────────────────

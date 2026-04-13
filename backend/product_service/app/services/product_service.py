@@ -29,6 +29,48 @@ def _compute_stock_status(qty: int) -> str:
     return "in_stock"
 
 
+# ── Bayesian weighted rating ───────────────────────────────
+# C = prior mean (global average, assume 3.5 if no data)
+# m = minimum reviews to trust fully (damping factor)
+BAYESIAN_C = 3.5
+BAYESIAN_M = 10
+
+
+def _bayesian_avg(avg_rating: float, review_count: int) -> float:
+    """Weighted Bayesian average: (C*m + sum_ratings) / (m + n).
+
+    A product with 50 reviews at 4.0 => ~3.95
+    A product with 3 reviews at 4.2 => ~3.66   (penalised for few reviews)
+    """
+    if review_count == 0:
+        return 0.0
+    return round(
+        (BAYESIAN_C * BAYESIAN_M + avg_rating * review_count) / (BAYESIAN_M + review_count),
+        4,
+    )
+
+
+async def refresh_product_rating(db: AsyncSession, product_id: uuid.UUID):
+    """Recalculate avg_rating, review_count, bayesian_rating for a product."""
+    row = await db.execute(
+        select(
+            func.coalesce(func.avg(Review.rating), 0).label("avg_rating"),
+            func.count(Review.review_id).label("review_count"),
+        ).where(Review.product_id == product_id)
+    )
+    stats = row.one()
+    avg_r = float(stats.avg_rating)
+    cnt = int(stats.review_count)
+    bayesian = _bayesian_avg(avg_r, cnt)
+
+    await db.execute(
+        Product.__table__.update()
+        .where(Product.product_id == product_id)
+        .values(avg_rating=round(avg_r, 2), review_count=cnt, bayesian_rating=bayesian)
+    )
+    await db.flush()
+
+
 async def _save_image(file: UploadFile, product_id: uuid.UUID) -> str:
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Only JPEG/PNG/WEBP images allowed")
@@ -146,7 +188,9 @@ async def _index_to_es(product: Product, category_ids: list, category_names: lis
         "promotion_badge": product.promotion_badge,
         "sales_count": product.sales_count,
         "image_url": images[0].url if images else None,
-        "rating": None,
+        "rating": float(product.avg_rating) if product.avg_rating else None,
+        "review_count": product.review_count or 0,
+        "bayesian_rating": float(product.bayesian_rating) if product.bayesian_rating else 0,
     }
     await es_service.index_product(doc)
 

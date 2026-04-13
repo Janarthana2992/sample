@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { cartService } from '../../services/cart'
 import { useCartStore } from '../../store/cartStore'
 import { LoadingSpinner } from '../../components/common/LoadingSpinner'
+import { aiClient } from '../../services/api'
 
 export default function Cart() {
     const { setCart } = useCartStore()
@@ -36,6 +37,30 @@ export default function Cart() {
     })
 
     if (isLoading) return <LoadingSpinner />
+
+    const cartProductIds = cart?.items.map(i => i.product_id) ?? []
+
+    return <CartContent cart={cart} cartProductIds={cartProductIds} removeMutation={removeMutation} updateMutation={updateMutation} />
+}
+
+function CartContent({ cart, cartProductIds, removeMutation, updateMutation }: {
+    cart: import('../../types').Cart | undefined
+    cartProductIds: string[]
+    removeMutation: any
+    updateMutation: any
+}) {
+    const { data: cartRecs } = useQuery({
+        queryKey: ['cart-recs', ...cartProductIds],
+        queryFn: async () => {
+            if (cartProductIds.length === 0) return []
+            const r = await aiClient.get('/recommend/interest', {
+                params: { product_ids: cartProductIds.join(','), top_n: 6 },
+            })
+            return (r.data.items || []).filter((i: any) => !cartProductIds.includes(i.product_id))
+        },
+        enabled: cartProductIds.length > 0,
+        staleTime: 60_000,
+    })
 
     if (!cart || cart.items.length === 0) {
         return (
@@ -115,6 +140,40 @@ export default function Cart() {
                     </Link>
                 </div>
             </div>
+
+            {/* You might also like */}
+            {cartRecs && cartRecs.length > 0 && (
+                <div className="lg:col-span-3">
+                    <h2 className="text-lg font-bold text-gray-900 mb-4">You Might Also Like</h2>
+                    <div className="flex gap-4 overflow-x-auto pb-2">
+                        {cartRecs.map((rec: any) => (
+                            <Link
+                                key={rec.product_id}
+                                to={`/products/${rec.product_id}`}
+                                className="shrink-0 w-40 bg-white rounded-xl border border-gray-200 hover:shadow-md transition-shadow overflow-hidden"
+                            >
+                                <div className="w-full aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
+                                    {rec.image_url
+                                        ? <img src={rec.image_url} alt={rec.name} className="w-full h-full object-cover" />
+                                        : <span className="text-3xl">📦</span>
+                                    }
+                                </div>
+                                <div className="p-2">
+                                    <p className="text-xs font-semibold text-gray-800 line-clamp-2 leading-snug mb-1">{rec.name || 'View Product'}</p>
+                                    {rec.selling_price && (
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-sm font-bold text-gray-900">₹{Number(rec.selling_price).toLocaleString('en-IN')}</span>
+                                            {rec.mrp && rec.mrp > rec.selling_price && (
+                                                <span className="text-xs text-gray-400 line-through">₹{Number(rec.mrp).toLocaleString('en-IN')}</span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </Link>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

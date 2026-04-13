@@ -1,18 +1,57 @@
 import { useParams, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 import { orderService } from '../../services/orders'
+import { useAuthStore } from '../../store/authStore'
 import { LoadingSpinner } from '../../components/common/LoadingSpinner'
+import { GoogleMap, useJsApiLoader, MarkerF } from '@react-google-maps/api'
+import { useState, useCallback } from 'react'
 
 const STATUS_STEPS = ['pending', 'confirmed', 'dispatched', 'delivered']
 
 export default function OrderDetail() {
     const { orderId } = useParams<{ orderId: string }>()
+    const { user } = useAuthStore()
+    const qc = useQueryClient()
 
     const { data: order, isLoading } = useQuery({
         queryKey: ['order', orderId],
         queryFn: () => orderService.getOrder(orderId!),
         enabled: !!orderId,
     })
+
+    const { data: paymentConfig } = useQuery({
+        queryKey: ['payment-config'],
+        queryFn: orderService.getPaymentConfig,
+    })
+
+    const handleRetryPayment = () => {
+        if (!order || !order.razorpay_order_id || !paymentConfig?.razorpay_key_id || !window.Razorpay) return
+        const options = {
+            key: paymentConfig.razorpay_key_id,
+            amount: Math.round(Number(order.total_price) * 100),
+            currency: 'INR',
+            name: 'ShopHere',
+            description: `Order #${order.order_id.slice(0, 8).toUpperCase()}`,
+            order_id: order.razorpay_order_id,
+            prefill: { name: user?.full_name || '', email: user?.email || '' },
+            handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+                try {
+                    await orderService.verifyPayment(order.order_id, {
+                        razorpay_order_id: response.razorpay_order_id,
+                        razorpay_payment_id: response.razorpay_payment_id,
+                        razorpay_signature: response.razorpay_signature,
+                    })
+                    toast.success('Payment successful!')
+                    qc.invalidateQueries({ queryKey: ['order', orderId] })
+                } catch {
+                    toast.error('Payment verification failed.')
+                }
+            },
+            theme: { color: '#2563eb' },
+        }
+        new window.Razorpay(options).open()
+    }
 
     const handleDownloadPDF = () => {
         if (!order) return
@@ -245,9 +284,17 @@ export default function OrderDetail() {
                 <div className="card">
                     <h2 className="font-semibold text-gray-900 mb-3">Payment</h2>
                     <p className="text-sm text-gray-700 capitalize font-medium">{order.payment_method || '—'}</p>
-                    <span className={`mt-1.5 inline-block text-xs px-2.5 py-0.5 rounded-full font-semibold ${order.payment_status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                    <span className={`mt-1.5 inline-block text-xs px-2.5 py-0.5 rounded-full font-semibold ${order.payment_status === 'paid' ? 'bg-green-100 text-green-700' : order.payment_status === 'failed' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
                         {order.payment_status}
                     </span>
+                    {order.payment_method !== 'cod' && order.payment_status !== 'paid' && order.razorpay_order_id && paymentConfig?.razorpay_key_id && (
+                        <button
+                            onClick={handleRetryPayment}
+                            className="mt-3 btn-primary text-xs py-1.5 px-3 w-full"
+                        >
+                            {order.payment_status === 'failed' ? '🔄 Retry Payment' : '💳 Complete Payment'}
+                        </button>
+                    )}
                 </div>
 
                 {order.shipping_address && (
@@ -263,6 +310,47 @@ export default function OrderDetail() {
                     </div>
                 )}
             </div>
+
+            {/* Delivery Map */}
+            {order.shipping_address && <DeliveryMap address={order.shipping_address} />}
+        </div>
+    )
+}
+
+function DeliveryMap({ address }: { address: { address_line1: string; city: string; state: string; pincode: string } }) {
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
+    const { isLoaded } = useJsApiLoader({ googleMapsApiKey: apiKey })
+    const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null)
+
+    const geocode = useCallback(() => {
+        if (!isLoaded || !window.google) return
+        const geocoder = new window.google.maps.Geocoder()
+        const addressStr = `${address.address_line1}, ${address.city}, ${address.state} ${address.pincode}, India`
+        geocoder.geocode({ address: addressStr }, (results: google.maps.GeocoderResult[] | null, status: google.maps.GeocoderStatus) => {
+            if (status === 'OK' && results && results[0]) {
+                setPosition({
+                    lat: results[0].geometry.location.lat(),
+                    lng: results[0].geometry.location.lng(),
+                })
+            }
+        })
+    }, [isLoaded, address])
+
+    // Geocode on mount
+    useState(() => { geocode() })
+
+    if (!apiKey || !isLoaded || !position) return null
+
+    return (
+        <div className="card">
+            <h2 className="font-semibold text-gray-900 mb-3">📍 Delivery Location</h2>
+            <GoogleMap
+                mapContainerStyle={{ width: '100%', height: '250px', borderRadius: '0.5rem' }}
+                center={position}
+                zoom={14}
+            >
+                <MarkerF position={position} />
+            </GoogleMap>
         </div>
     )
 }

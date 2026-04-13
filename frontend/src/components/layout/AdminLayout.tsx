@@ -11,6 +11,8 @@ const navItems = [
     { to: '/admin/orders', label: '📋 Orders' },
     { to: '/admin/reviews', label: '⭐ Reviews' },
     { to: '/admin/staff', label: '👥 Staff' },
+    { to: '/admin/documents', label: '🧠 RAG Docs' },
+    { to: '/admin/handoff', label: '💬 Live Chat' },
 ]
 
 export function AdminLayout() {

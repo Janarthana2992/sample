@@ -14,14 +14,14 @@ ARG VITE_PRODUCT_SERVICE_URL
 ARG VITE_CART_SERVICE_URL
 ARG VITE_ORDER_SERVICE_URL
 ARG VITE_AI_SERVICE_URL
-ARG VITE_MAPBOX_TOKEN
+ARG VITE_GOOGLE_MAPS_API_KEY
 
 ENV VITE_AUTH_SERVICE_URL=$VITE_AUTH_SERVICE_URL
 ENV VITE_PRODUCT_SERVICE_URL=$VITE_PRODUCT_SERVICE_URL
 ENV VITE_CART_SERVICE_URL=$VITE_CART_SERVICE_URL
 ENV VITE_ORDER_SERVICE_URL=$VITE_ORDER_SERVICE_URL
 ENV VITE_AI_SERVICE_URL=$VITE_AI_SERVICE_URL
-ENV VITE_MAPBOX_TOKEN=$VITE_MAPBOX_TOKEN
+ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
 
 RUN npm run build
 
@@ -31,7 +31,8 @@ FROM nginx:1.27-alpine
 # Copy built assets
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# nginx config: serve SPA, proxy nothing (all APIs hit backend directly from browser)
+# nginx config will be mounted from nginx/nginx.conf in docker-compose
+# Default fallback config for standalone use
 RUN printf 'server {\n\
     listen 80;\n\
     root /usr/share/nginx/html;\n\
@@ -39,8 +40,6 @@ RUN printf 'server {\n\
     gzip on;\n\
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml image/svg+xml;\n\
     \n\
-    # Proxy uploaded product images from the product service.\n\
-    # Use ^~ to prevent the regex location below from overriding this.\n\
     location ^~ /static/products/ {\n\
     proxy_pass http://product_service:8002/static/products/;\n\
     proxy_set_header Host $host;\n\
@@ -53,7 +52,6 @@ RUN printf 'server {\n\
     try_files $uri $uri/ /index.html;\n\
     }\n\
     \n\
-    # Cache static assets\n\
     location ~* \\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?)$ {\n\
     expires 1y;\n\
     add_header Cache-Control "public, immutable";\n\
