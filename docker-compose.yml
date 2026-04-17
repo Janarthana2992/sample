@@ -217,26 +217,6 @@ services:
       retries: 3
       start_period: 10s
 
-  # ──────────────── llama.cpp (local LLM host) ────────────────
-  llamacpp:
-    build:
-      context: ./backend/llamacpp
-      dockerfile: Dockerfile
-    container_name: ecom_llamacpp
-    restart: unless-stopped
-    environment:
-      MODEL_URL: ${LLAMACPP_MODEL_URL:-https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf}
-    ports:
-      - "8080:8080"
-    volumes:
-      - llamacpp_models:/models
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 120s
-
   ai_service:
     build:
       context: ./backend/ai_service
@@ -254,8 +234,6 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/1
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
-      LLAMACPP_BASE_URL: ${LLAMACPP_BASE_URL:-http://llamacpp:8080}
-      LLAMACPP_MODEL: ${LLAMACPP_MODEL:-local}
       CHAT_SESSION_TTL: 1800
       FAISS_INDEX_PATH: /app/faiss_store
       MODEL_NAME: all-MiniLM-L6-v2
@@ -265,8 +243,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      llamacpp:
         condition: service_healthy
     ports:
       - "8005:8005"
@@ -309,4 +285,3 @@ volumes:
   product_uploads:
   faiss_store:
   elasticsearch_data:
-  llamacpp_models:

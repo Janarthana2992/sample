@@ -14,19 +14,17 @@ from app.services.handoff_service import handoff_service
 
 logger = logging.getLogger(__name__)
 
-# ── llama.cpp client (OpenAI-compatible endpoint) ──────────────────
-_llamacpp_client = None
+# ── Gemini client ────────────────────────────────────────────
+_gemini_client = None
 
 
-def _get_llamacpp_client():
-    global _llamacpp_client
-    if _llamacpp_client is None:
-        from openai import AsyncOpenAI
-        _llamacpp_client = AsyncOpenAI(
-            api_key="llamacpp",        # llama.cpp ignores this but the SDK requires it
-            base_url=f"{settings.LLAMACPP_BASE_URL}/v1",
-        )
-    return _llamacpp_client
+def _get_gemini_client():
+    global _gemini_client
+    if _gemini_client is None:
+        import google.generativeai as genai
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        _gemini_client = genai.GenerativeModel(settings.GEMINI_MODEL)
+    return _gemini_client
 
 
 async def _llm_chat_completion(
@@ -36,19 +34,49 @@ async def _llm_chat_completion(
     temperature: float = 0.7,
     max_tokens: int = 1024,
 ) -> dict:
-    """Use llama.cpp local LLM for chat completion (OpenAI-compatible API)."""
-    client = _get_llamacpp_client()
-    kwargs = {
-        "model": settings.LLAMACPP_MODEL,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
+    """Use Gemini for chat completion."""
+    import google.generativeai as genai
+
+    # Convert OpenAI-style messages to Gemini format
+    gemini_history = []
+    system_parts = []
+    last_user_text = ""
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content") or ""
+        if role == "system":
+            system_parts.append(content)
+        elif role == "user":
+            last_user_text = content
+            if gemini_history or system_parts:
+                gemini_history.append({"role": "user", "parts": [content]})
+        elif role == "assistant":
+            gemini_history.append({"role": "model", "parts": [content]})
+
+    # If there's history rebuild model with system instruction
+    system_text = "\n".join(system_parts) if system_parts else None
+    model = genai.GenerativeModel(
+        settings.GEMINI_MODEL,
+        system_instruction=system_text,
+    )
+
+    gen_config = genai.types.GenerationConfig(
+        temperature=temperature,
+        max_output_tokens=max_tokens,
+    )
+
+    # Build history without the last user message
+    history = gemini_history[:-1] if gemini_history and gemini_history[-1]["role"] == "user" else gemini_history
+    prompt = last_user_text or (messages[-1].get("content") if messages else "")
+
+    chat = model.start_chat(history=history)
+    response = await chat.send_message_async(prompt, generation_config=gen_config)
+
+    return {
+        "role": "assistant",
+        "content": response.text,
+        "tool_calls": None,
     }
-    if tools:
-        kwargs["tools"] = tools
-        kwargs["tool_choice"] = tool_choice
-    resp = await client.chat.completions.create(**kwargs)
-    return _openai_response_to_dict(resp)
 
 
 def _openai_response_to_dict(resp) -> dict:
