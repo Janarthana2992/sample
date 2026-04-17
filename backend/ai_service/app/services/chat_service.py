@@ -14,19 +14,19 @@ from app.services.handoff_service import handoff_service
 
 logger = logging.getLogger(__name__)
 
-# ── Ollama client (OpenAI-compatible endpoint) ──────────────
-_ollama_client = None
+# ── llama.cpp client (OpenAI-compatible endpoint) ──────────────────
+_llamacpp_client = None
 
 
-def _get_ollama_client():
-    global _ollama_client
-    if _ollama_client is None:
+def _get_llamacpp_client():
+    global _llamacpp_client
+    if _llamacpp_client is None:
         from openai import AsyncOpenAI
-        _ollama_client = AsyncOpenAI(
-            api_key="ollama",          # Ollama ignores this but the SDK requires it
-            base_url=f"{settings.OLLAMA_BASE_URL}/v1",
+        _llamacpp_client = AsyncOpenAI(
+            api_key="llamacpp",        # llama.cpp ignores this but the SDK requires it
+            base_url=f"{settings.LLAMACPP_BASE_URL}/v1",
         )
-    return _ollama_client
+    return _llamacpp_client
 
 
 async def _llm_chat_completion(
@@ -36,10 +36,10 @@ async def _llm_chat_completion(
     temperature: float = 0.7,
     max_tokens: int = 1024,
 ) -> dict:
-    """Use Ollama local LLM for chat completion (OpenAI-compatible API)."""
-    client = _get_ollama_client()
+    """Use llama.cpp local LLM for chat completion (OpenAI-compatible API)."""
+    client = _get_llamacpp_client()
     kwargs = {
-        "model": settings.OLLAMA_MODEL,
+        "model": settings.LLAMACPP_MODEL,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,

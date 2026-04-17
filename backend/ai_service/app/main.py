@@ -39,47 +39,11 @@ async def lifespan(app: FastAPI):
     rag_kb.load()  # load persisted RAG index
     logger.info("AI Service ready. FAISS vectors: %d, RAG chunks: %d",
                 len(faiss_service.product_ids), len(rag_kb.chunks))
-    # Pull Ollama model in background (non-blocking)
-    asyncio.create_task(_ensure_ollama_model())
     # Build RAG index in background (non-blocking) if empty
     if len(rag_kb.chunks) == 0:
         asyncio.create_task(_build_rag_background())
     yield
     logger.info("AI Service stopped.")
-
-
-async def _ensure_ollama_model():
-    """Pull the configured Ollama model if it is not already present."""
-    import httpx
-    model = settings.OLLAMA_MODEL
-    base_url = settings.OLLAMA_BASE_URL
-    try:
-        # Check if model is already available
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.get(f"{base_url}/api/tags")
-            if r.status_code == 200:
-                names = [m.get("name", "") for m in r.json().get("models", [])]
-                if any(model in n for n in names):
-                    logger.info("Ollama model '%s' already present.", model)
-                    return
-        logger.info("Pulling Ollama model '%s' — this may take several minutes on first run...", model)
-        async with httpx.AsyncClient(timeout=600.0) as client:
-            async with client.stream(
-                "POST", f"{base_url}/api/pull", json={"name": model}
-            ) as resp:
-                async for line in resp.aiter_lines():
-                    if '"status"' in line:
-                        import json as _json
-                        try:
-                            d = _json.loads(line)
-                            status_msg = d.get("status", "")
-                            if status_msg:
-                                logger.info("Ollama pull — %s", status_msg)
-                        except Exception:
-                            pass
-        logger.info("Ollama model '%s' is ready.", model)
-    except Exception:
-        logger.exception("Failed to pull Ollama model '%s'. Chat may not work until model is available.", model)
 
 
 async def _build_rag_background():

@@ -8,24 +8,24 @@ import type { Order } from '../../types'
 
 // ── Pipeline columns ──────────────────────────────────────────────────────────
 const COLUMNS: { key: string; label: string; color: string; bg: string; border: string; dot: string }[] = [
-    { key: 'pending',          label: 'Pending',      color: 'text-amber-700 dark:text-amber-400',   bg: 'bg-amber-50 dark:bg-amber-900/20',   border: 'border-amber-200 dark:border-amber-800',   dot: 'bg-amber-400' },
-    { key: 'confirmed',        label: 'Confirmed',    color: 'text-blue-700 dark:text-blue-400',     bg: 'bg-blue-50 dark:bg-blue-900/20',     border: 'border-blue-200 dark:border-blue-800',     dot: 'bg-blue-400' },
-    { key: 'dispatched',       label: 'Dispatched',   color: 'text-purple-700 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-900/20', border: 'border-purple-200 dark:border-purple-800', dot: 'bg-purple-400' },
-    { key: 'delivered',        label: 'Delivered',    color: 'text-emerald-700 dark:text-emerald-400',bg: 'bg-emerald-50 dark:bg-emerald-900/20',border: 'border-emerald-200 dark:border-emerald-800',dot: 'bg-emerald-400' },
-    { key: 'return_requested', label: 'Return Req.',  color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-900/20', border: 'border-orange-200 dark:border-orange-800', dot: 'bg-orange-400' },
-    { key: 'returned',         label: 'Returned',     color: 'text-teal-700 dark:text-teal-400',     bg: 'bg-teal-50 dark:bg-teal-900/20',     border: 'border-teal-200 dark:border-teal-800',     dot: 'bg-teal-400' },
-    { key: 'cancelled',        label: 'Cancelled',    color: 'text-red-700 dark:text-red-400',       bg: 'bg-red-50 dark:bg-red-900/20',       border: 'border-red-200 dark:border-red-800',       dot: 'bg-red-400' },
+    { key: 'pending', label: 'Pending', color: 'text-amber-700 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/20', border: 'border-amber-200 dark:border-amber-800', dot: 'bg-amber-400' },
+    { key: 'confirmed', label: 'Confirmed', color: 'text-blue-700 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-200 dark:border-blue-800', dot: 'bg-blue-400' },
+    { key: 'dispatched', label: 'Dispatched', color: 'text-purple-700 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-900/20', border: 'border-purple-200 dark:border-purple-800', dot: 'bg-purple-400' },
+    { key: 'delivered', label: 'Delivered', color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20', border: 'border-emerald-200 dark:border-emerald-800', dot: 'bg-emerald-400' },
+    { key: 'return_requested', label: 'Return Req.', color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-900/20', border: 'border-orange-200 dark:border-orange-800', dot: 'bg-orange-400' },
+    { key: 'returned', label: 'Returned', color: 'text-teal-700 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-900/20', border: 'border-teal-200 dark:border-teal-800', dot: 'bg-teal-400' },
+    { key: 'cancelled', label: 'Cancelled', color: 'text-red-700 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800', dot: 'bg-red-400' },
 ]
 
 // Allowed drag→drop transitions
 const ALLOWED: Record<string, string[]> = {
-    pending:          ['confirmed', 'cancelled'],
-    confirmed:        ['dispatched', 'cancelled'],
-    dispatched:       ['delivered'],
-    delivered:        ['return_requested'],
+    pending: ['confirmed', 'cancelled'],
+    confirmed: ['dispatched', 'cancelled'],
+    dispatched: ['delivered'],
+    delivered: ['return_requested'],
     return_requested: ['returned', 'delivered'],
-    returned:         [],
-    cancelled:        [],
+    returned: [],
+    cancelled: [],
 }
 
 function canDrop(from: string, to: string) {
