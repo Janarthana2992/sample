@@ -294,6 +294,8 @@ CREATE TABLE IF NOT EXISTS addresses (
     state VARCHAR(100) NOT NULL,
     pincode VARCHAR(10) NOT NULL,
     country VARCHAR(60) NOT NULL DEFAULT 'India',
+    latitude DECIMAL(10, 7),
+    longitude DECIMAL(10, 7),
     is_default BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

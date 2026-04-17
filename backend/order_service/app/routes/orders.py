@@ -14,7 +14,7 @@ from app.models.order import Address
 from app.schemas.order import (
     AddressCreate, AddressOut,
     CheckoutRequest, OrderOut, PaginatedOrders, StatusUpdateRequest,
-    VerifyPaymentRequest,
+    VerifyPaymentRequest, CancelRequest, ReturnRequest, ReturnApprovalRequest,
 )
 from app.services.order_service import (
     create_order, get_order, list_orders, update_order_status,
@@ -100,6 +100,105 @@ async def get_single_order(
     return await get_order(db, order_id, auth["user_id"], auth["role"])
 
 
+@router.post("/orders/{order_id}/cancel", response_model=OrderOut)
+async def customer_cancel_order(
+    order_id: uuid.UUID,
+    payload: CancelRequest,
+    auth: dict = Depends(_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Customers can cancel their own pending or confirmed orders."""
+    from app.models.order import Order as OrderModel, OrderStatusHistory
+    from sqlalchemy.orm import selectinload
+
+    result = await db.execute(
+        select(OrderModel)
+        .where(OrderModel.order_id == order_id)
+        .options(selectinload(OrderModel.items), selectinload(OrderModel.shipping_address), selectinload(OrderModel.status_history))
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if auth["role"] == "customer" and str(order.user_id) != auth["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if order.status not in ("pending", "confirmed"):
+        raise HTTPException(status_code=400, detail=f"Cannot cancel an order with status '{order.status}'")
+
+    prev_status = order.status
+    order.status = "cancelled"
+    order.cancel_reason = payload.reason
+    db.add(OrderStatusHistory(order_id=order.order_id, from_status=prev_status, to_status="cancelled", note=f"Cancelled by customer: {payload.reason}"))
+    await db.commit()
+    await db.refresh(order, ["items", "shipping_address", "status_history"])
+    return order
+
+
+@router.post("/orders/{order_id}/return", response_model=OrderOut)
+async def customer_return_order(
+    order_id: uuid.UUID,
+    payload: ReturnRequest,
+    auth: dict = Depends(_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Customers can request a return for delivered orders."""
+    from app.models.order import Order as OrderModel, OrderStatusHistory
+    from sqlalchemy.orm import selectinload
+
+    result = await db.execute(
+        select(OrderModel)
+        .where(OrderModel.order_id == order_id)
+        .options(selectinload(OrderModel.items), selectinload(OrderModel.shipping_address), selectinload(OrderModel.status_history))
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if str(order.user_id) != auth["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if order.status != "delivered":
+        raise HTTPException(status_code=400, detail="Returns are only allowed for delivered orders")
+
+    order.status = "return_requested"
+    order.return_reason = payload.reason
+    db.add(OrderStatusHistory(order_id=order.order_id, from_status="delivered", to_status="return_requested", note=f"Return requested by customer: {payload.reason}"))
+    await db.commit()
+    await db.refresh(order, ["items", "shipping_address", "status_history"])
+    return order
+
+
+@router.post("/orders/{order_id}/approve-return", response_model=OrderOut)
+async def admin_approve_return(
+    order_id: uuid.UUID,
+    payload: ReturnApprovalRequest,
+    auth: dict = Depends(_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin approves or rejects a return request."""
+    from app.models.order import Order as OrderModel, OrderStatusHistory
+    from sqlalchemy.orm import selectinload
+
+    if auth["role"] not in ("admin", "staff"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    result = await db.execute(
+        select(OrderModel)
+        .where(OrderModel.order_id == order_id)
+        .options(selectinload(OrderModel.items), selectinload(OrderModel.shipping_address), selectinload(OrderModel.status_history))
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status != "return_requested":
+        raise HTTPException(status_code=400, detail="Order is not in return_requested status")
+
+    new_status = "returned" if payload.approved else "delivered"
+    note = payload.note or ("Return approved — item returned" if payload.approved else "Return rejected by admin")
+    db.add(OrderStatusHistory(order_id=order.order_id, from_status="return_requested", to_status=new_status, note=note))
+    order.status = new_status
+    await db.commit()
+    await db.refresh(order, ["items", "shipping_address", "status_history"])
+    return order
+
+
 @router.patch("/orders/{order_id}/status", response_model=OrderOut)
 async def update_status(
     order_id: uuid.UUID,
@@ -154,6 +253,21 @@ async def verify_payment(
     order.payment_status = "paid"
     await db.commit()
     await db.refresh(order, ["items", "shipping_address", "status_history"])
+
+    # Clear the cart now that payment is confirmed (deferred from order creation)
+    try:
+        import httpx as _httpx
+        from app.config import settings as _settings
+        from app.services.order_service import _internal_service_headers
+        async with _httpx.AsyncClient(timeout=5.0) as _client:
+            await _client.delete(
+                f"{_settings.CART_SERVICE_URL}/cart/internal/{order.user_id}",
+                headers=_internal_service_headers(),
+            )
+    except Exception as _exc:
+        import logging as _logging
+        _logging.getLogger(__name__).warning("Failed to clear cart after payment: %s", _exc)
+
     return order
 
 
@@ -218,14 +332,17 @@ async def dashboard_kpis(auth: dict = Depends(_auth), db: AsyncSession = Depends
     from sqlalchemy import text
     result = await db.execute(text("""
         SELECT
-            COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) AS orders_today,
-            COUNT(*) FILTER (WHERE date_trunc('month', created_at) = date_trunc('month', now())) AS orders_month,
+            COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE AND status != 'cancelled') AS orders_today,
+            COUNT(*) FILTER (WHERE date_trunc('month', created_at) = date_trunc('month', now()) AND status != 'cancelled') AS orders_month,
             COUNT(*) FILTER (WHERE status = 'dispatched') AS dispatched,
             COUNT(*) FILTER (WHERE status = 'pending') AS pending,
-            COALESCE(SUM(total_price) FILTER (WHERE created_at >= CURRENT_DATE), 0) AS revenue_today,
-            COALESCE(SUM(total_price) FILTER (WHERE date_trunc('month', created_at) = date_trunc('month', now())), 0) AS revenue_month
+            COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled,
+            COUNT(*) FILTER (WHERE status = 'return_requested') AS return_requests,
+            COUNT(*) FILTER (WHERE status = 'confirmed') AS confirmed,
+            COUNT(*) FILTER (WHERE status = 'delivered') AS delivered,
+            COALESCE(SUM(total_price) FILTER (WHERE created_at >= CURRENT_DATE AND status != 'cancelled'), 0) AS revenue_today,
+            COALESCE(SUM(total_price) FILTER (WHERE date_trunc('month', created_at) = date_trunc('month', now()) AND status != 'cancelled'), 0) AS revenue_month
         FROM orders
-        WHERE status != 'cancelled'
     """))
     row = result.fetchone()
     return {
@@ -233,6 +350,10 @@ async def dashboard_kpis(auth: dict = Depends(_auth), db: AsyncSession = Depends
         "orders_month": row.orders_month,
         "dispatched": row.dispatched,
         "pending": row.pending,
+        "confirmed": row.confirmed,
+        "delivered": row.delivered,
+        "cancelled": row.cancelled,
+        "return_requests": row.return_requests,
         "revenue_today": float(row.revenue_today),
         "revenue_month": float(row.revenue_month),
     }

@@ -49,6 +49,7 @@ export interface Product {
     promotion_badge?: string
     sales_count: number
     images: ProductImage[]
+    category_ids?: string[]
     created_at: string
 }
 
@@ -155,6 +156,8 @@ export interface Address {
     state: string
     pincode: string
     country: string
+    latitude?: number
+    longitude?: number
     is_default: boolean
 }
 
@@ -178,6 +181,8 @@ export interface Order {
     estimated_delivery?: string
     razorpay_order_id?: string
     razorpay_payment_id?: string
+    cancel_reason?: string
+    return_reason?: string
     items: OrderItem[]
     shipping_address?: Address
     status_history: StatusHistory[]
@@ -208,6 +213,7 @@ export interface SearchHit {
     selling_price: number
     stock_status: string
     rating?: number
+    review_count?: number
     image_url?: string
     score: number
 }

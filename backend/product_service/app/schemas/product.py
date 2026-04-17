@@ -118,9 +118,17 @@ class ProductOut(BaseModel):
     avg_rating: Optional[Decimal] = None
     review_count: int = 0
     images: List[ProductImageOut] = []
+    category_ids: List[uuid.UUID] = []
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        instance = super().model_validate(obj, **kwargs)
+        if hasattr(obj, 'product_categories') and obj.product_categories:
+            instance.category_ids = [pc.category_id for pc in obj.product_categories]
+        return instance
 
 
 class ProductListOut(BaseModel):

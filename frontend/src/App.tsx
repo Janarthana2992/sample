@@ -20,6 +20,12 @@ const Checkout = lazy(() => import('./pages/customer/Checkout'))
 const CustomerOrders = lazy(() => import('./pages/customer/Orders'))
 const CustomerOrderDetail = lazy(() => import('./pages/customer/OrderDetail'))
 const CustomerEvents = lazy(() => import('./pages/customer/Events'))
+const CustomerWishlist = lazy(() => import('./pages/customer/Wishlist'))
+const CustomerAddresses = lazy(() => import('./pages/customer/Addresses'))
+const CustomerSupport = lazy(() => import('./pages/customer/Support'))
+const CustomerHelpCenter = lazy(() => import('./pages/customer/HelpCenter'))
+const CustomerShippingInfo = lazy(() => import('./pages/customer/ShippingInfo'))
+const CustomerReturns = lazy(() => import('./pages/customer/Returns'))
 
 // Admin
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'))
@@ -34,6 +40,7 @@ const AdminEvents = lazy(() => import('./pages/admin/Events'))
 const AdminStaff = lazy(() => import('./pages/admin/Staff'))
 const AdminDocuments = lazy(() => import('./pages/admin/Documents'))
 const AdminHandoff = lazy(() => import('./pages/admin/Handoff'))
+const AdminReturnRequests = lazy(() => import('./pages/admin/ReturnRequests'))
 
 // Staff
 const StaffDashboard = lazy(() => import('./pages/staff/Dashboard'))
@@ -43,20 +50,26 @@ const StaffStock = lazy(() => import('./pages/staff/Stock'))
 
 function NotFound() {
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center text-gray-500">
-            <p className="text-6xl font-bold">404</p>
-            <p className="mt-2 text-lg">Page not found</p>
-            <a href="/" className="mt-4 text-blue-600 hover:underline">Back to Home</a>
+        <div className="min-h-screen flex flex-col items-center justify-center">
+            <div className="text-center">
+                <p className="text-8xl font-extrabold text-gray-200 dark:text-gray-800">404</p>
+                <p className="mt-4 text-xl font-semibold text-gray-900 dark:text-white">Page not found</p>
+                <p className="mt-2 text-gray-500 dark:text-gray-400">The page you're looking for doesn't exist.</p>
+                <a href="/" className="mt-6 inline-block btn-primary">Back to Home</a>
+            </div>
         </div>
     )
 }
 
 function Unauthorized() {
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center text-gray-500">
-            <p className="text-6xl font-bold">403</p>
-            <p className="mt-2 text-lg">You don't have permission to access this page</p>
-            <a href="/" className="mt-4 text-blue-600 hover:underline">Back to Home</a>
+        <div className="min-h-screen flex flex-col items-center justify-center">
+            <div className="text-center">
+                <p className="text-8xl font-extrabold text-gray-200 dark:text-gray-800">403</p>
+                <p className="mt-4 text-xl font-semibold text-gray-900 dark:text-white">Access Denied</p>
+                <p className="mt-2 text-gray-500 dark:text-gray-400">You don't have permission to access this page.</p>
+                <a href="/" className="mt-6 inline-block btn-primary">Back to Home</a>
+            </div>
         </div>
     )
 }
@@ -74,14 +87,20 @@ export default function App() {
                         <Route path="/products/:id" element={<ProductDetail />} />
                         <Route path="/events" element={<CustomerEvents />} />
                         <Route path="/cart" element={<Cart />} />
+                        <Route path="/wishlist" element={<CustomerWishlist />} />
                         <Route path="/login" element={<Login />} />
                         <Route path="/register" element={<Register />} />
+                        <Route path="/support" element={<CustomerSupport />} />
+                        <Route path="/help" element={<CustomerHelpCenter />} />
+                        <Route path="/shipping" element={<CustomerShippingInfo />} />
+                        <Route path="/returns" element={<CustomerReturns />} />
 
                         {/* Authenticated customer routes */}
                         <Route element={<ProtectedRoute roles={['customer', 'admin', 'staff']} />}>
                             <Route path="/checkout" element={<Checkout />} />
                             <Route path="/orders" element={<CustomerOrders />} />
                             <Route path="/orders/:orderId" element={<CustomerOrderDetail />} />
+                            <Route path="/addresses" element={<CustomerAddresses />} />
                         </Route>
                     </Route>
 
@@ -101,6 +120,7 @@ export default function App() {
                             <Route path="/admin/staff" element={<AdminStaff />} />
                             <Route path="/admin/documents" element={<AdminDocuments />} />
                             <Route path="/admin/handoff" element={<AdminHandoff />} />
+                            <Route path="/admin/returns" element={<AdminReturnRequests />} />
                         </Route>
                     </Route>
 

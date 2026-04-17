@@ -12,8 +12,8 @@ export const orderService = {
 
     getOrder: (id: string) => orderClient.get<Order>(`/orders/${id}`).then(r => r.data),
 
-    checkout: (address_id: string, payment_method: string) =>
-        orderClient.post<Order>('/orders', { address_id, payment_method }).then(r => r.data),
+    checkout: (address_id: string, payment_method: string, product_ids?: string[]) =>
+        orderClient.post<Order>('/orders', { address_id, payment_method, ...(product_ids ? { product_ids } : {}) }).then(r => r.data),
 
     verifyPayment: (orderId: string, data: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) =>
         orderClient.post<Order>(`/orders/${orderId}/verify-payment`, data).then(r => r.data),
@@ -23,6 +23,15 @@ export const orderService = {
 
     updateStatus: (orderId: string, data: object) =>
         orderClient.patch<Order>(`/orders/${orderId}/status`, data).then(r => r.data),
+
+    cancelOrder: (orderId: string, reason: string) =>
+        orderClient.post<Order>(`/orders/${orderId}/cancel`, { reason }).then(r => r.data),
+
+    returnOrder: (orderId: string, reason: string) =>
+        orderClient.post<Order>(`/orders/${orderId}/return`, { reason }).then(r => r.data),
+
+    approveReturn: (orderId: string, approved: boolean, note?: string) =>
+        orderClient.post<Order>(`/orders/${orderId}/approve-return`, { approved, note }).then(r => r.data),
 
     // Admin analytics
     getDashboardKPIs: () => orderClient.get('/admin/dashboard/kpis').then(r => r.data),

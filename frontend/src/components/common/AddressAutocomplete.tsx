@@ -1,7 +1,4 @@
-import { useRef, useEffect } from 'react'
-import { useJsApiLoader } from '@react-google-maps/api'
-
-const LIBRARIES: ('places')[] = ['places']
+import { useRef, useState, useCallback } from 'react'
 
 interface AddressAutocompleteProps {
     onPlaceSelected: (place: {
@@ -21,72 +18,66 @@ export function AddressAutocomplete({
     className = 'input',
     placeholder = 'Start typing your address...',
 }: AddressAutocompleteProps) {
-    const inputRef = useRef<HTMLInputElement>(null)
-    const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null)
+    const [value, setValue] = useState(defaultValue)
+    const [suggestions, setSuggestions] = useState<any[]>([])
+    const [showDropdown, setShowDropdown] = useState(false)
+    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
-
-    const { isLoaded } = useJsApiLoader({
-        googleMapsApiKey: apiKey,
-        libraries: LIBRARIES,
-    })
-
-    useEffect(() => {
-        if (!isLoaded || !inputRef.current || autocompleteRef.current) return
-
-        autocompleteRef.current = new google.maps.places.Autocomplete(inputRef.current, {
-            componentRestrictions: { country: 'in' },
-            fields: ['address_components', 'formatted_address'],
-            types: ['address'],
-        })
-
-        autocompleteRef.current.addListener('place_changed', () => {
-            const place = autocompleteRef.current?.getPlace()
-            if (!place?.address_components) return
-
-            let streetNumber = ''
-            let route = ''
-            let city = ''
-            let state = ''
-            let pincode = ''
-
-            for (const comp of place.address_components) {
-                const types = comp.types
-                if (types.includes('street_number')) streetNumber = comp.long_name
-                if (types.includes('route')) route = comp.long_name
-                if (types.includes('sublocality_level_1') || types.includes('sublocality')) {
-                    if (!route) route = comp.long_name
-                }
-                if (types.includes('locality')) city = comp.long_name
-                if (types.includes('administrative_area_level_1')) state = comp.long_name
-                if (types.includes('postal_code')) pincode = comp.long_name
+    const handleChange = useCallback((text: string) => {
+        setValue(text)
+        if (timeoutRef.current) clearTimeout(timeoutRef.current)
+        if (text.length < 3) { setSuggestions([]); setShowDropdown(false); return }
+        timeoutRef.current = setTimeout(async () => {
+            try {
+                const res = await fetch(
+                    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5&countrycodes=in&accept-language=en`,
+                    { headers: { 'User-Agent': 'ECommerceApp/1.0' } }
+                )
+                const data = await res.json()
+                setSuggestions(data)
+                setShowDropdown(data.length > 0)
+            } catch {
+                setSuggestions([])
+                setShowDropdown(false)
             }
+        }, 400)
+    }, [])
 
-            const address_line1 = streetNumber ? `${streetNumber} ${route}` : route || place.formatted_address || ''
+    const handleSelect = useCallback((item: any) => {
+        const addr = item.address || {}
+        const address_line1 = [addr.road, addr.neighbourhood, addr.suburb].filter(Boolean).join(', ') || item.display_name?.split(',')[0] || ''
+        const city = addr.city || addr.town || addr.village || addr.county || ''
+        const state = addr.state || ''
+        const pincode = addr.postcode || ''
+        setValue(item.display_name?.split(',').slice(0, 3).join(',') || '')
+        setShowDropdown(false)
+        setSuggestions([])
+        onPlaceSelected({ address_line1, city, state, pincode })
+    }, [onPlaceSelected])
 
-            onPlaceSelected({ address_line1, city, state, pincode })
-        })
-    }, [isLoaded, onPlaceSelected])
-
-    if (!apiKey) {
-        // Fallback: plain input if no API key
-        return (
+    return (
+        <div className="relative">
             <input
                 type="text"
-                defaultValue={defaultValue}
+                value={value}
+                onChange={e => handleChange(e.target.value)}
+                onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
                 className={className}
                 placeholder={placeholder}
             />
-        )
-    }
-
-    return (
-        <input
-            ref={inputRef}
-            type="text"
-            defaultValue={defaultValue}
-            className={className}
-            placeholder={isLoaded ? placeholder : 'Loading...'}
-        />
+            {showDropdown && suggestions.length > 0 && (
+                <ul className="absolute z-50 left-0 right-0 top-full mt-1 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {suggestions.map((item: any, i: number) => (
+                        <li
+                            key={i}
+                            onMouseDown={() => handleSelect(item)}
+                            className="px-3 py-2 text-sm text-surface-700 dark:text-surface-300 hover:bg-primary-50 dark:hover:bg-primary-900/20 cursor-pointer truncate"
+                        >
+                            {item.display_name}
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
     )
 }

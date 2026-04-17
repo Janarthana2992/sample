@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.0-flash"
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    OLLAMA_BASE_URL: str = "http://ollama:11434"
+    OLLAMA_MODEL: str = "qwen2.5:3b"
     LOCAL_MODEL_REPO: str = "Qwen/Qwen2.5-3B-Instruct-GGUF"
     LOCAL_MODEL_FILE: str = "qwen2.5-3b-instruct-q4_k_m.gguf"
     REDIS_URL: str = "redis://localhost:6379/1"

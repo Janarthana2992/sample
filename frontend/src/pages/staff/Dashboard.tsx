@@ -31,13 +31,13 @@ export default function StaffDashboard() {
 
     return (
         <div className="space-y-6">
-            <h1 className="text-2xl font-bold text-gray-900">Staff Dashboard</h1>
+            <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Staff Dashboard</h1>
 
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
                 {cards.map(c => (
                     <div key={c.label} className="card text-center">
                         <p className={`text-3xl font-bold ${c.color}`}>{c.value}</p>
-                        <p className="text-sm text-gray-500 mt-1">{c.label}</p>
+                        <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">{c.label}</p>
                     </div>
                 ))}
             </div>
@@ -45,41 +45,41 @@ export default function StaffDashboard() {
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 {/* Recent Activity */}
                 <div className="card">
-                    <h2 className="font-semibold text-gray-900 mb-3">Recent Orders</h2>
+                    <h2 className="font-semibold text-surface-900 dark:text-white mb-3">Recent Orders</h2>
                     <div className="space-y-2 max-h-80 overflow-y-auto">
                         {recentOrders?.items?.map((order: any) => (
-                            <div key={order.order_id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                            <div key={order.order_id} className="flex items-center justify-between py-2 border-b border-surface-100 dark:border-surface-800 last:border-0">
                                 <div>
-                                    <p className="text-sm font-medium text-gray-800">#{order.order_id.slice(0, 8)}</p>
-                                    <p className="text-xs text-gray-500">
+                                    <p className="text-sm font-medium text-surface-800 dark:text-surface-200">#{order.order_id.slice(0, 8)}</p>
+                                    <p className="text-xs text-surface-500 dark:text-surface-400">
                                         {new Date(order.created_at).toLocaleString('en-IN')}
                                     </p>
                                 </div>
                                 <div className="text-right">
-                                    <span className={`badge text-xs ${order.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                                            order.status === 'confirmed' ? 'bg-blue-100 text-blue-700' :
-                                                order.status === 'dispatched' ? 'bg-purple-100 text-purple-700' :
-                                                    'bg-green-100 text-green-700'
+                                    <span className={`badge text-xs ${order.status === 'pending' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                            order.status === 'confirmed' ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                                                order.status === 'dispatched' ? 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
+                                                    'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
                                         }`}>{order.status}</span>
-                                    <p className="text-xs text-gray-700 mt-1">₹{Number(order.total_amount).toLocaleString('en-IN')}</p>
+                                    <p className="text-xs text-surface-700 dark:text-surface-300 mt-1">₹{Number(order.total_amount).toLocaleString('en-IN')}</p>
                                 </div>
                             </div>
                         ))}
                         {!recentOrders?.items?.length && (
-                            <p className="text-sm text-gray-400 text-center py-6">No recent orders</p>
+                            <p className="text-sm text-surface-400 text-center py-6">No recent orders</p>
                         )}
                     </div>
                 </div>
 
                 {/* Low Stock */}
                 <div className="card">
-                    <h2 className="font-semibold text-gray-900 mb-3">Low-Stock Items</h2>
+                    <h2 className="font-semibold text-surface-900 dark:text-white mb-3">Low-Stock Items</h2>
                     <div className="space-y-2 max-h-80 overflow-y-auto">
                         {lowStock?.map((product: any) => (
-                            <div key={product.product_id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                            <div key={product.product_id} className="flex items-center justify-between py-2 border-b border-surface-100 dark:border-surface-800 last:border-0">
                                 <div>
-                                    <p className="text-sm font-medium text-gray-800">{product.name}</p>
-                                    <p className="text-xs text-gray-500">SKU: {product.sku}</p>
+                                    <p className="text-sm font-medium text-surface-800 dark:text-surface-200">{product.name}</p>
+                                    <p className="text-xs text-surface-500 dark:text-surface-400">SKU: {product.sku}</p>
                                 </div>
                                 <span className={`text-sm font-semibold ${product.stock_quantity <= 5 ? 'text-red-600' : 'text-orange-500'}`}>
                                     {product.stock_quantity} left
@@ -87,7 +87,7 @@ export default function StaffDashboard() {
                             </div>
                         ))}
                         {!lowStock?.length && (
-                            <p className="text-sm text-gray-400 text-center py-6">All items are well-stocked</p>
+                            <p className="text-sm text-surface-400 text-center py-6">All items are well-stocked</p>
                         )}
                     </div>
                 </div>

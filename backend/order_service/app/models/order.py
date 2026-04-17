@@ -23,6 +23,8 @@ class Address(Base):
     state = Column(String(100), nullable=False)
     pincode = Column(String(10), nullable=False, index=True)
     country = Column(String(60), nullable=False, default="India")
+    latitude = Column(Numeric(10, 7), nullable=True)
+    longitude = Column(Numeric(10, 7), nullable=True)
     is_default = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -45,6 +47,8 @@ class Order(Base):
     razorpay_order_id = Column(String(100), index=True)
     razorpay_payment_id = Column(String(100))
     razorpay_signature = Column(Text)
+    cancel_reason = Column(Text, nullable=True)
+    return_reason = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True))
 
@@ -54,7 +58,7 @@ class Order(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending','confirmed','dispatched','delivered','cancelled')",
+            "status IN ('pending','confirmed','dispatched','delivered','cancelled','return_requested','returned')",
             name="ck_order_status",
         ),
         CheckConstraint(

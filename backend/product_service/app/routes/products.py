@@ -17,6 +17,7 @@ from app.schemas.product import (
 from app.services import product_service, search_service as ss
 from app.utils.rbac import require_roles, require_permission
 from app.models.product import Product, ProductCategory, Category
+from app.utils.distributed_lock import distributed_lock
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -73,6 +74,16 @@ async def create_product(
             detail=exc.errors(),
         ) from exc
     return await product_service.create_product(db, payload, images, admin.user_id)
+
+
+@router.get("/low-stock", response_model=List[ProductOut])
+async def list_low_stock(
+    size: int = Query(default=100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(admin_or_staff),
+):
+    """Returns low_stock + out_of_stock products ordered by stock_quantity ascending."""
+    return await product_service.list_low_stock_products(db, size=size)
 
 
 @router.get("", response_model=PaginatedProducts)
@@ -216,14 +227,15 @@ async def import_products_csv(
 
         existing = (await db.execute(select(Product).where(Product.sku == sku))).scalar_one_or_none()
         if existing:
-            existing.name = row["name"].strip()
-            existing.description = row["description"].strip()
-            existing.mrp = mrp
-            existing.selling_price = selling_price
-            existing.stock_quantity = stock_qty
-            existing.stock_status = stock_status
-            existing.tags = tags
-            existing.is_active = is_active
+            async with distributed_lock(f"product:{existing.product_id}", ttl=5, acquire_timeout=3):
+                existing.name = row["name"].strip()
+                existing.description = row["description"].strip()
+                existing.mrp = mrp
+                existing.selling_price = selling_price
+                existing.stock_quantity = stock_qty
+                existing.stock_status = stock_status
+                existing.tags = tags
+                existing.is_active = is_active
             updated += 1
         else:
             if len(row["name"].strip()) < 3 or len(row["description"].strip()) < 20:

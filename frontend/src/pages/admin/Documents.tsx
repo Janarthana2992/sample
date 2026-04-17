@@ -72,8 +72,8 @@ export default function Documents() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-gray-900">RAG Documents</h1>
-                <p className="text-sm text-gray-500 mt-1">
+                <h1 className="text-2xl font-bold text-surface-900 dark:text-white">RAG Documents</h1>
+                <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
                     Upload documents to feed the AI chatbot knowledge base. Supported: .txt, .md, .pdf, .csv (max 5 MB)
                 </p>
             </div>
@@ -83,14 +83,14 @@ export default function Documents() {
                 onDrop={handleDrop}
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
                 onDragLeave={() => setDragOver(false)}
-                className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-gray-50'
+                className={`border-2 border-dashed rounded-2xl p-8 text-center transition-colors ${dragOver ? 'border-blue-500 bg-blue-50' : 'border-surface-300 dark:border-surface-600 bg-surface-50 dark:bg-surface-800'
                     }`}
             >
                 <div className="text-4xl mb-3">📄</div>
-                <p className="text-sm text-gray-600 mb-3">
+                <p className="text-sm text-surface-600 dark:text-surface-400 mb-3">
                     Drag & drop files here, or click to browse
                 </p>
-                <label className="inline-block cursor-pointer bg-blue-600 text-white text-sm font-medium px-5 py-2.5 rounded-lg hover:bg-blue-700 transition-colors">
+                <label className="inline-block cursor-pointer bg-primary-600 text-white text-sm font-medium px-5 py-2.5 rounded-lg hover:bg-blue-700 transition-colors">
                     Choose Files
                     <input
                         type="file"
@@ -111,14 +111,14 @@ export default function Documents() {
 
             {/* Documents list */}
             {docs.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
+                <div className="text-center py-12 text-surface-500 dark:text-surface-400">
                     <p className="text-5xl mb-4">📂</p>
                     <p className="text-lg font-medium">No documents uploaded yet</p>
                     <p className="text-sm mt-1">Upload files to enhance the chatbot's knowledge</p>
                 </div>
             ) : (
                 <div className="space-y-3">
-                    <p className="text-sm text-gray-500 font-medium">{docs.length} document(s) indexed</p>
+                    <p className="text-sm text-surface-500 dark:text-surface-400 font-medium">{docs.length} document(s) indexed</p>
                     {docs.map(doc => (
                         <div key={doc.doc_id} className="card flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -128,8 +128,8 @@ export default function Documents() {
                                             doc.filename.endsWith('.md') ? '📝' : '📄'}
                                 </span>
                                 <div>
-                                    <p className="font-medium text-gray-900">{doc.filename}</p>
-                                    <p className="text-xs text-gray-500">
+                                    <p className="font-medium text-surface-900 dark:text-white">{doc.filename}</p>
+                                    <p className="text-xs text-surface-500 dark:text-surface-400">
                                         {doc.chunk_count} chunks · {(doc.char_count / 1000).toFixed(1)}k chars
                                     </p>
                                 </div>

@@ -70,7 +70,7 @@ export default function AdminStaff() {
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-900">Staff Management</h1>
+                <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Staff Management</h1>
                 <button onClick={() => setShowCreate(v => !v)} className="btn-primary text-sm">
                     {showCreate ? '✕ Cancel' : '+ Add Staff'}
                 </button>
@@ -79,7 +79,7 @@ export default function AdminStaff() {
             {/* Create form */}
             {showCreate && (
                 <div className="card space-y-4">
-                    <h2 className="font-semibold text-gray-900">New Staff Member</h2>
+                    <h2 className="font-semibold text-surface-900 dark:text-white">New Staff Member</h2>
                     <form onSubmit={handleSubmit(onCreateSubmit)} className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                             <div>
@@ -111,7 +111,7 @@ export default function AdminStaff() {
                                         key={m.id}
                                         type="button"
                                         onClick={() => togglePerm(m.id, selectedPermissions, setSelectedPermissions)}
-                                        className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${selectedPermissions.includes(m.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                                        className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${selectedPermissions.includes(m.id) ? 'bg-primary-600 text-white border-primary-600' : 'bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 border-surface-300 dark:border-surface-600 hover:border-blue-400'
                                             }`}
                                     >
                                         {m.label}
@@ -133,17 +133,17 @@ export default function AdminStaff() {
                     <div key={s.user_id} className="card">
                         <div className="flex items-start justify-between">
                             <div>
-                                <p className="font-semibold text-gray-900">{s.full_name}</p>
-                                <p className="text-sm text-gray-500">{s.email}</p>
-                                <p className="text-xs text-gray-400 mt-1">Last login: —</p>
+                                <p className="font-semibold text-surface-900 dark:text-white">{s.full_name}</p>
+                                <p className="text-sm text-surface-500 dark:text-surface-400">{s.email}</p>
+                                <p className="text-xs text-surface-400 mt-1">Last login: —</p>
                             </div>
                             <div className="flex items-center gap-3">
-                                <span className={`badge ${s.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                <span className={`badge ${s.is_active ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
                                     {s.is_active ? 'Active' : 'Suspended'}
                                 </span>
                                 <button
                                     onClick={() => toggleMutation.mutate(s.user_id)}
-                                    className="text-xs text-gray-500 hover:underline"
+                                    className="text-xs text-surface-500 dark:text-surface-400 hover:text-primary-600 transition-colors"
                                 >
                                     {s.is_active ? 'Suspend' : 'Reactivate'}
                                 </button>
@@ -166,7 +166,7 @@ export default function AdminStaff() {
                                             key={m.id}
                                             type="button"
                                             onClick={() => setEditingPerms(ep => ep ? { ...ep, perms: ep.perms.includes(m.id) ? ep.perms.filter(x => x !== m.id) : [...ep.perms, m.id] } : ep)}
-                                            className={`px-3 py-1 rounded-lg text-xs border ${editingPerms.perms.includes(m.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+                                            className={`px-3 py-1 rounded-lg text-xs border ${editingPerms.perms.includes(m.id) ? 'bg-primary-600 text-white border-primary-600' : 'bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 border-surface-300 dark:border-surface-600'
                                                 }`}
                                         >
                                             {m.label}
@@ -185,7 +185,7 @@ export default function AdminStaff() {
                         ) : (
                             <button
                                 onClick={() => setEditingPerms({ id: s.user_id, perms: s.permissions.map(p => p.module) })}
-                                className="mt-3 text-xs text-blue-600 hover:underline"
+                                className="mt-3 text-xs text-primary-600 dark:text-primary-400 hover:text-primary-600 transition-colors"
                             >
                                 Edit Permissions
                             </button>

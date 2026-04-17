@@ -35,11 +35,11 @@ export default function AdminCategories() {
 
     return (
         <div className="space-y-6 max-w-2xl">
-            <h1 className="text-2xl font-bold text-gray-900">Categories</h1>
+            <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Categories</h1>
 
             {/* Create form */}
             <div className="card space-y-4">
-                <h2 className="font-semibold text-gray-900">Add New Category</h2>
+                <h2 className="font-semibold text-surface-900 dark:text-white">Add New Category</h2>
                 <div>
                     <label className="label">Category Name *</label>
                     <input
@@ -60,23 +60,23 @@ export default function AdminCategories() {
 
             {/* List */}
             <div className="card">
-                <h2 className="font-semibold text-gray-900 mb-4">Existing Categories</h2>
+                <h2 className="font-semibold text-surface-900 dark:text-white mb-4">Existing Categories</h2>
                 {isLoading ? <LoadingSpinner /> : (
                     <div className="space-y-2">
                         {(categories as Category[]).length === 0 && (
-                            <p className="text-sm text-gray-400">No categories yet.</p>
+                            <p className="text-sm text-surface-400">No categories yet.</p>
                         )}
                         {(categories as Category[]).map(cat => (
-                            <div key={cat.category_id} className="flex items-center justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
+                            <div key={cat.category_id} className="flex items-center justify-between gap-3 py-2 border-b border-surface-100 dark:border-surface-800 last:border-0">
                                 <div>
-                                    <p className="text-sm font-medium text-gray-900">{cat.name}</p>
+                                    <p className="text-sm font-medium text-surface-900 dark:text-white">{cat.name}</p>
                                 </div>
                                 <button
                                     onClick={() => {
                                         if (confirm(`Delete category "${cat.name}"?`))
                                             deleteMutation.mutate(cat.category_id)
                                     }}
-                                    className="text-xs text-red-500 hover:underline shrink-0"
+                                    className="text-xs text-red-500 hover:text-primary-600 transition-colors shrink-0"
                                 >
                                     Delete
                                 </button>

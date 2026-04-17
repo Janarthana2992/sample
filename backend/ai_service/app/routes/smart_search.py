@@ -89,18 +89,7 @@ async def _parse_with_ai(query: str) -> Optional[dict]:
     """Try local LLM, fall back to Gemini, then return None."""
     prompt = PARSE_PROMPT.format(categories=", ".join(CATEGORIES), query=query)
 
-    # Try local LLM
-    try:
-        from app.services.local_llm_service import local_llm
-        if local_llm.loaded:
-            text = await local_llm.generate_text(prompt, temperature=0.1, max_tokens=300)
-            result = _extract_json(text)
-            if result:
-                return result
-    except Exception as exc:
-        logger.warning("Local LLM parse-intent failed: %s", exc)
-
-    # Fallback: Gemini (if configured)
+    # Try Gemini (if configured)
     if settings.GEMINI_API_KEY:
         try:
             import google.generativeai as genai

@@ -17,6 +17,9 @@ from app.routes.categories import router as categories_router
 from app.routes.events import router as events_router
 from app.routes.variants import router as variants_router
 from app.services.search_service import es_service
+from app.utils.distributed_lock import init_redis, close_redis
+from app.services.kafka_producer import init_kafka_producer, close_kafka_producer
+from app.services.kafka_consumer import start_consumer, stop_consumer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -38,8 +41,14 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await es_service.setup_index()
+    await init_redis()
+    await init_kafka_producer()
+    await start_consumer()
     logger.info("Product Service ready.")
     yield
+    await stop_consumer()
+    await close_kafka_producer()
+    await close_redis()
     await es_service.close()
     await engine.dispose()
     logger.info("Product Service stopped.")

@@ -119,6 +119,10 @@ class ElasticsearchService:
                 must_clauses.append(
                     {"terms": {"stock_status": ["in_stock", "low_stock"]}}
                 )
+            if filters.get("deals_only"):
+                must_clauses.append(
+                    {"script": {"script": "doc['mrp'].value > doc['selling_price'].value"}}
+                )
 
         es_query: Dict[str, Any] = {
             "bool": {

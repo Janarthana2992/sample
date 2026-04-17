@@ -10,6 +10,26 @@ class CartItemIn(BaseModel):
     quantity: int = Field(ge=1, le=1000)
 
 
+class WishlistItemIn(BaseModel):
+    product_id: uuid.UUID
+
+
+class WishlistItem(BaseModel):
+    product_id: str
+    product_name: str
+    selling_price: Decimal
+    mrp: Decimal
+    image_url: Optional[str] = None
+    stock_status: str = "in_stock"
+    added_at: str
+
+
+class WishlistResponse(BaseModel):
+    user_id: str
+    items: List[WishlistItem]
+    count: int
+
+
 class CartItemUpdate(BaseModel):
     quantity: int = Field(ge=1, le=1000)
 

@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     INTERNAL_SERVICE_TOKEN: str
+    REDIS_URL: str = "redis://:redis_pass@localhost:6379/2"
+    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
     UPLOAD_DIR: str = "/app/uploads"
     MAX_IMAGE_SIZE_MB: int = 5
     ENVIRONMENT: str = "development"

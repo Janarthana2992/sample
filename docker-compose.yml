@@ -55,6 +55,33 @@ services:
       timeout: 10s
       retries: 10
 
+  # ──────────────── Infrastructure (Kafka) ────────────────
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: ecom_kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1" ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
   # ──────────────── Backend Services ────────────────
   auth_service:
     build:
@@ -105,10 +132,16 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       AI_SERVICE_URL: http://ai_service:8005
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/2
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     depends_on:
       postgres:
         condition: service_healthy
       elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     ports:
       - "8002:8002"
@@ -184,6 +217,22 @@ services:
       retries: 3
       start_period: 10s
 
+  # ──────────────── Ollama (local LLM host) ────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ecom_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
   ai_service:
     build:
       context: ./backend/ai_service
@@ -201,8 +250,8 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/1
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
-      GROQ_API_KEY: ${GROQ_API_KEY}
-      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
       CHAT_SESSION_TTL: 1800
       FAISS_INDEX_PATH: /app/faiss_store
       MODEL_NAME: all-MiniLM-L6-v2
@@ -212,6 +261,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     ports:
       - "8005:8005"
@@ -235,7 +286,6 @@ services:
         VITE_CART_SERVICE_URL: ${VITE_CART_SERVICE_URL:-/api/cart}
         VITE_ORDER_SERVICE_URL: ${VITE_ORDER_SERVICE_URL:-/api/orders}
         VITE_AI_SERVICE_URL: ${VITE_AI_SERVICE_URL:-/api/ai}
-        VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY}
     container_name: ecom_frontend
     restart: unless-stopped
     ports:
@@ -255,3 +305,4 @@ volumes:
   product_uploads:
   faiss_store:
   elasticsearch_data:
+  ollama_models:

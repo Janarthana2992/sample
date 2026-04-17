@@ -9,25 +9,24 @@ import redis.asyncio as aioredis
 
 from app.config import settings
 from app.services.rag_service import rag_kb
-from app.services.local_llm_service import local_llm
 from app.services.intent_router import route_intent
 from app.services.handoff_service import handoff_service
 
 logger = logging.getLogger(__name__)
 
-# ── Groq client (fallback when local LLM is not loaded) ────
-_groq_client = None
+# ── Ollama client (OpenAI-compatible endpoint) ──────────────
+_ollama_client = None
 
 
-def _get_groq_client():
-    global _groq_client
-    if _groq_client is None:
+def _get_ollama_client():
+    global _ollama_client
+    if _ollama_client is None:
         from openai import AsyncOpenAI
-        _groq_client = AsyncOpenAI(
-            api_key=settings.GROQ_API_KEY,
-            base_url="https://api.groq.com/openai/v1",
+        _ollama_client = AsyncOpenAI(
+            api_key="ollama",          # Ollama ignores this but the SDK requires it
+            base_url=f"{settings.OLLAMA_BASE_URL}/v1",
         )
-    return _groq_client
+    return _ollama_client
 
 
 async def _llm_chat_completion(
@@ -37,33 +36,19 @@ async def _llm_chat_completion(
     temperature: float = 0.7,
     max_tokens: int = 1024,
 ) -> dict:
-    """Try local LLM first; fall back to Groq if local model is unavailable."""
-    if local_llm.loaded:
-        return await local_llm.chat_completion(
-            messages=messages,
-            tools=tools,
-            tool_choice=tool_choice,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-
-    # Groq fallback
-    if settings.GROQ_API_KEY:
-        client = _get_groq_client()
-        kwargs = {
-            "model": settings.GROQ_MODEL,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
-        if tools:
-            kwargs["tools"] = tools
-            kwargs["tool_choice"] = tool_choice
-        resp = await client.chat.completions.create(**kwargs)
-        # Convert Pydantic response to dict for uniform handling
-        return _openai_response_to_dict(resp)
-
-    raise RuntimeError("No LLM available: local model not loaded and GROQ_API_KEY not set")
+    """Use Ollama local LLM for chat completion (OpenAI-compatible API)."""
+    client = _get_ollama_client()
+    kwargs = {
+        "model": settings.OLLAMA_MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if tools:
+        kwargs["tools"] = tools
+        kwargs["tool_choice"] = tool_choice
+    resp = await client.chat.completions.create(**kwargs)
+    return _openai_response_to_dict(resp)
 
 
 def _openai_response_to_dict(resp) -> dict:

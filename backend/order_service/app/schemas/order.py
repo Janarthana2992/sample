@@ -16,6 +16,8 @@ class AddressCreate(BaseModel):
     state: str = Field(min_length=2, max_length=100)
     pincode: str = Field(min_length=6, max_length=10, pattern=r"^\d{6}$")
     country: str = "India"
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     is_default: bool = False
 
 
@@ -29,6 +31,8 @@ class AddressOut(BaseModel):
     state: str
     pincode: str
     country: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     is_default: bool
 
     model_config = {"from_attributes": True}
@@ -67,6 +71,8 @@ class OrderOut(BaseModel):
     estimated_delivery: Optional[date]
     razorpay_order_id: Optional[str] = None
     razorpay_payment_id: Optional[str] = None
+    cancel_reason: Optional[str] = None
+    return_reason: Optional[str] = None
     items: List[OrderItemOut] = []
     shipping_address: Optional[AddressOut] = None
     status_history: List[StatusHistoryOut] = []
@@ -95,11 +101,25 @@ class PaginatedOrders(BaseModel):
 class CheckoutRequest(BaseModel):
     address_id: uuid.UUID
     payment_method: str = Field(pattern="^(upi|card|net_banking|cod)$")
+    product_ids: Optional[List[uuid.UUID]] = None  # If set, only order these items from cart
 
 
 class StatusUpdateRequest(BaseModel):
     status: str = Field(pattern="^(confirmed|dispatched|delivered|cancelled)$")
     tracking_number: Optional[str] = None
+
+
+class CancelRequest(BaseModel):
+    reason: str = Field(min_length=5, max_length=500)
+
+
+class ReturnRequest(BaseModel):
+    reason: str = Field(min_length=5, max_length=500)
+
+
+class ReturnApprovalRequest(BaseModel):
+    approved: bool
+    note: Optional[str] = None
 
 
 class VerifyPaymentRequest(BaseModel):

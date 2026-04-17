@@ -1,11 +1,21 @@
 import { useParams, Link } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
+import { motion } from 'framer-motion'
 import { orderService } from '../../services/orders'
 import { useAuthStore } from '../../store/authStore'
 import { LoadingSpinner } from '../../components/common/LoadingSpinner'
-import { GoogleMap, useJsApiLoader, MarkerF } from '@react-google-maps/api'
+import { AnimatedPage } from '../../components/common/AnimatedPage'
+import { MapContainer, TileLayer, Marker } from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
+import markerIcon from 'leaflet/dist/images/marker-icon.png'
+import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 import { useState, useCallback } from 'react'
+
+delete (L.Icon.Default.prototype as any)._getIconUrl
+L.Icon.Default.mergeOptions({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, shadowUrl: markerShadow })
 
 const STATUS_STEPS = ['pending', 'confirmed', 'dispatched', 'delivered']
 
@@ -23,6 +33,35 @@ export default function OrderDetail() {
     const { data: paymentConfig } = useQuery({
         queryKey: ['payment-config'],
         queryFn: orderService.getPaymentConfig,
+    })
+
+    const [confirming, setConfirming] = useState<'cancel' | 'return' | null>(null)
+    const [reason, setReason] = useState('')
+    const [customReason, setCustomReason] = useState('')
+
+    const CANCEL_REASONS = ['Ordered by mistake', 'Found a better price elsewhere', 'Changed my mind', 'Delivery time too long', 'Duplicate order', 'Other']
+    const RETURN_REASONS = ['Item damaged or defective', 'Wrong item received', 'Item not as described', 'Missing parts or accessories', 'Changed my mind', 'Other']
+    const finalReason = reason === 'Other' ? customReason.trim() : reason
+
+    const cancelMutation = useMutation({
+        mutationFn: () => orderService.cancelOrder(orderId!, finalReason),
+        onSuccess: () => {
+            toast.success('Order cancelled successfully')
+            qc.invalidateQueries({ queryKey: ['order', orderId] })
+            qc.invalidateQueries({ queryKey: ['orders'] })
+            setConfirming(null); setReason(''); setCustomReason('')
+        },
+        onError: (err: any) => { toast.error(err.response?.data?.detail || 'Could not cancel order') },
+    })
+
+    const returnMutation = useMutation({
+        mutationFn: () => orderService.returnOrder(orderId!, finalReason),
+        onSuccess: () => {
+            toast.success('Return request submitted')
+            qc.invalidateQueries({ queryKey: ['order', orderId] })
+            setConfirming(null); setReason(''); setCustomReason('')
+        },
+        onError: (err: any) => { toast.error(err.response?.data?.detail || 'Could not submit return request') },
     })
 
     const handleRetryPayment = () => {
@@ -86,7 +125,7 @@ export default function OrderDetail() {
           </div>` : ''
 
         const statusColor: Record<string, string> = {
-            pending: '#d97706', confirmed: '#2563eb', dispatched: '#7c3aed', delivered: '#16a34a', cancelled: '#dc2626'
+            pending: '#d97706', confirmed: '#2563eb', dispatched: '#7c3aed', delivered: '#16a34a', cancelled: '#dc2626', return_requested: '#ea580c', returned: '#0d9488'
         }
 
         win.document.write(`<!DOCTYPE html>
@@ -165,192 +204,309 @@ export default function OrderDetail() {
     }
 
     if (isLoading) return <LoadingSpinner />
-    if (!order) return <div className="text-center py-16 text-gray-500">Order not found</div>
+    if (!order) return (
+        <div className="text-center py-20">
+            <svg className="mx-auto h-16 w-16 text-surface-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            <p className="mt-4 text-lg font-semibold text-surface-700 dark:text-surface-300">Order not found</p>
+            <Link to="/orders" className="mt-4 inline-block btn-primary">View Orders</Link>
+        </div>
+    )
 
     const statusIndex = STATUS_STEPS.indexOf(order.status)
     const isCancelled = order.status === 'cancelled'
+    const isReturned = order.status === 'returned'
+    const isTerminal = isCancelled || isReturned
     const fmt = (d: string) => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
 
     return (
-        <div className="space-y-6 max-w-3xl">
-            {/* Page header */}
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-3">
-                    <Link to="/orders" className="text-gray-400 hover:text-gray-700 text-xl leading-none">←</Link>
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900">
-                            Order <span className="font-mono text-blue-600">#{order.order_id.slice(0, 8).toUpperCase()}</span>
-                        </h1>
-                        <p className="text-sm text-gray-500 mt-0.5">Placed on {fmt(order.created_at)}</p>
+        <AnimatedPage>
+            <div className="space-y-6 max-w-3xl">
+                {/* Page header */}
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                        <Link to="/orders" className="w-9 h-9 rounded-xl bg-surface-100 dark:bg-surface-800 flex items-center justify-center text-surface-500 hover:text-surface-900 dark:hover:text-white hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                        </Link>
+                        <div>
+                            <h1 className="text-2xl font-bold text-surface-900 dark:text-white">
+                                Order <span className="font-mono text-primary-600 dark:text-primary-400">#{order.order_id.slice(0, 8).toUpperCase()}</span>
+                            </h1>
+                            <p className="text-sm text-surface-500 dark:text-surface-400 mt-0.5">Placed on {fmt(order.created_at)}</p>
+                        </div>
                     </div>
-                </div>
-                <button onClick={handleDownloadPDF} className="btn-secondary text-sm flex items-center gap-2 shrink-0">
-                    ⬇ Download Invoice
-                </button>
-            </div>
-
-            {/* Status tracker */}
-            {!isCancelled ? (
-                <div className="card">
-                    <h2 className="font-semibold text-gray-900 mb-5">Order Status</h2>
-                    <div className="relative flex items-start">
-                        {/* Background line */}
-                        <div className="absolute top-4 left-4 right-4 h-0.5 bg-gray-200 z-0" />
-                        <div
-                            className="absolute top-4 left-4 h-0.5 bg-blue-600 z-0 transition-all"
-                            style={{ width: statusIndex > 0 ? `${(statusIndex / (STATUS_STEPS.length - 1)) * (100 - 8 / STATUS_STEPS.length)}%` : '0%' }}
-                        />
-                        {STATUS_STEPS.map((step, i) => {
-                            const done = i < statusIndex
-                            const active = i === statusIndex
-                            return (
-                                <div key={step} className="flex-1 flex flex-col items-center relative z-10">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all
-                                        ${done ? 'bg-blue-600 border-blue-600 text-white'
-                                            : active ? 'bg-white border-blue-600 text-blue-600 shadow-md'
-                                                : 'bg-white border-gray-300 text-gray-400'}`}>
-                                        {done ? '✓' : i + 1}
-                                    </div>
-                                    <span className={`text-xs mt-2 capitalize font-medium ${done || active ? 'text-blue-600' : 'text-gray-400'}`}>
-                                        {step}
-                                    </span>
+                    <button onClick={handleDownloadPDF} className="btn-secondary text-sm flex items-center gap-2 shrink-0">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        Download Invoice
+                    </button>
+                    {/* Customer Cancel */}
+                    {(order.status === 'pending' || order.status === 'confirmed') && (
+                        confirming === 'cancel' ? (
+                            <div className="shrink-0 space-y-2 min-w-[260px]">
+                                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Why are you cancelling?</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {CANCEL_REASONS.map(r => (
+                                        <button key={r} type="button" onClick={() => setReason(r)}
+                                            className={`text-[11px] px-2.5 py-1 rounded-full border font-medium transition-colors ${reason === r ? 'bg-red-500 text-white border-red-500' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}>
+                                            {r}
+                                        </button>
+                                    ))}
                                 </div>
-                            )
-                        })}
-                    </div>
-
-                    <div className="mt-4 space-y-1.5">
-                        {order.tracking_number && (
-                            <p className="text-sm text-purple-700 bg-purple-50 px-3 py-1.5 rounded-lg">
-                                📦 Tracking: <span className="font-mono font-semibold">{order.tracking_number}</span>
-                            </p>
-                        )}
-                        {order.estimated_delivery && (
-                            <p className="text-sm text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg">
-                                🚚 Estimated delivery: <strong>{fmt(order.estimated_delivery)}</strong>
-                            </p>
-                        )}
-                    </div>
-                </div>
-            ) : (
-                <div className="card border border-red-200 bg-red-50">
-                    <p className="text-red-700 font-semibold">❌ This order was cancelled.</p>
-                </div>
-            )}
-
-            {/* Items */}
-            <div className="card">
-                <h2 className="font-semibold text-gray-900 mb-4">Items Ordered</h2>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="bg-gray-50 border-y border-gray-200">
-                                <th className="text-left px-4 py-2.5 text-gray-600 font-semibold">Product</th>
-                                <th className="text-center px-4 py-2.5 text-gray-600 font-semibold w-16">Qty</th>
-                                <th className="text-right px-4 py-2.5 text-gray-600 font-semibold w-28">Unit Price</th>
-                                <th className="text-right px-4 py-2.5 text-gray-600 font-semibold w-28">Subtotal</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {order.items.map((item: any) => (
-                                <tr key={item.order_item_id} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 text-gray-800 font-medium">
-                                        {item.product_name || <span className="font-mono text-xs text-gray-400">{item.product_id.slice(0, 8)}</span>}
-                                    </td>
-                                    <td className="px-4 py-3 text-center text-gray-600">{item.quantity}</td>
-                                    <td className="px-4 py-3 text-right text-gray-600">₹{Number(item.unit_price).toLocaleString('en-IN')}</td>
-                                    <td className="px-4 py-3 text-right font-semibold text-gray-900">₹{(item.quantity * Number(item.unit_price)).toLocaleString('en-IN')}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                        <tfoot>
-                            {Number(order.deal_discount) > 0 && (
-                                <tr className="border-t border-gray-200">
-                                    <td colSpan={3} className="px-4 py-2 text-right text-green-700 text-sm font-medium">Deal Discount</td>
-                                    <td className="px-4 py-2 text-right text-green-700 font-semibold">–₹{Number(order.deal_discount).toLocaleString('en-IN')}</td>
-                                </tr>
-                            )}
-                            <tr className="border-t-2 border-gray-300 bg-gray-50">
-                                <td colSpan={3} className="px-4 py-3 text-right font-bold text-gray-900">Grand Total</td>
-                                <td className="px-4 py-3 text-right font-bold text-blue-600 text-base">₹{Number(order.total_price).toLocaleString('en-IN')}</td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            </div>
-
-            {/* Payment & Shipping */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="card">
-                    <h2 className="font-semibold text-gray-900 mb-3">Payment</h2>
-                    <p className="text-sm text-gray-700 capitalize font-medium">{order.payment_method || '—'}</p>
-                    <span className={`mt-1.5 inline-block text-xs px-2.5 py-0.5 rounded-full font-semibold ${order.payment_status === 'paid' ? 'bg-green-100 text-green-700' : order.payment_status === 'failed' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                        {order.payment_status}
-                    </span>
-                    {order.payment_method !== 'cod' && order.payment_status !== 'paid' && order.razorpay_order_id && paymentConfig?.razorpay_key_id && (
-                        <button
-                            onClick={handleRetryPayment}
-                            className="mt-3 btn-primary text-xs py-1.5 px-3 w-full"
-                        >
-                            {order.payment_status === 'failed' ? '🔄 Retry Payment' : '💳 Complete Payment'}
-                        </button>
+                                {reason === 'Other' && (
+                                    <textarea value={customReason} onChange={e => setCustomReason(e.target.value)}
+                                        placeholder="Describe your reason…" rows={2}
+                                        className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-red-400" />
+                                )}
+                                <div className="flex gap-2">
+                                    <button onClick={() => { setConfirming(null); setReason(''); setCustomReason('') }} className="btn-ghost text-xs shrink-0">Back</button>
+                                    <button onClick={() => cancelMutation.mutate()} disabled={!finalReason || cancelMutation.isPending}
+                                        className="btn-ghost text-xs text-white bg-red-500 hover:bg-red-600 border-red-500 shrink-0 disabled:opacity-50">
+                                        {cancelMutation.isPending ? 'Cancelling…' : 'Confirm Cancel'}
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <button onClick={() => setConfirming('cancel')}
+                                className="btn-ghost text-sm text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 shrink-0">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                Cancel Order
+                            </button>
+                        )
+                    )}
+                    {/* Return Request */}
+                    {order.status === 'delivered' && (
+                        confirming === 'return' ? (
+                            <div className="shrink-0 space-y-2 min-w-[260px]">
+                                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Why are you returning?</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {RETURN_REASONS.map(r => (
+                                        <button key={r} type="button" onClick={() => setReason(r)}
+                                            className={`text-[11px] px-2.5 py-1 rounded-full border font-medium transition-colors ${reason === r ? 'bg-amber-500 text-white border-amber-500' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}>
+                                            {r}
+                                        </button>
+                                    ))}
+                                </div>
+                                {reason === 'Other' && (
+                                    <textarea value={customReason} onChange={e => setCustomReason(e.target.value)}
+                                        placeholder="Describe your reason…" rows={2}
+                                        className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                                )}
+                                <div className="flex gap-2">
+                                    <button onClick={() => { setConfirming(null); setReason(''); setCustomReason('') }} className="btn-ghost text-xs shrink-0">Back</button>
+                                    <button onClick={() => returnMutation.mutate()} disabled={!finalReason || returnMutation.isPending}
+                                        className="btn-ghost text-xs text-white bg-amber-500 hover:bg-amber-600 border-amber-500 shrink-0 disabled:opacity-50">
+                                        {returnMutation.isPending ? 'Submitting…' : 'Submit Return'}
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <button onClick={() => setConfirming('return')}
+                                className="btn-ghost text-sm text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center gap-2 shrink-0">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+                                Request Return
+                            </button>
+                        )
+                    )}
+                    {order.status === 'return_requested' && (
+                        <span className="text-sm text-orange-600 dark:text-orange-400 font-medium bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+                            Return Requested — Pending Review
+                        </span>
+                    )}
+                    {order.status === 'returned' && (
+                        <span className="text-sm text-teal-600 dark:text-teal-400 font-medium bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 11l3 3L22 4" /></svg>
+                            Return Approved — Refund in 5-7 business days
+                        </span>
                     )}
                 </div>
 
-                {order.shipping_address && (
+                {/* Status tracker */}
+                {!isTerminal ? (
                     <div className="card">
-                        <h2 className="font-semibold text-gray-900 mb-3">Shipping Address</h2>
-                        <div className="text-sm text-gray-700 space-y-1">
-                            <p className="font-semibold text-gray-900">{order.shipping_address.full_name}</p>
-                            <p className="text-gray-500">{order.shipping_address.phone}</p>
-                            <p>{order.shipping_address.address_line1}</p>
-                            {order.shipping_address.address_line2 && <p>{order.shipping_address.address_line2}</p>}
-                            <p>{order.shipping_address.city}, {order.shipping_address.state} – {order.shipping_address.pincode}</p>
+                        <h2 className="font-semibold text-surface-900 dark:text-white mb-5">Order Status</h2>
+                        <div className="relative flex items-start">
+                            {/* Background line */}
+                            <div className="absolute top-4 left-4 right-4 h-0.5 bg-surface-200 dark:bg-surface-700 z-0" />
+                            <motion.div
+                                className="absolute top-4 left-4 h-0.5 bg-gradient-to-r from-primary-500 to-primary-600 z-0"
+                                initial={{ width: '0%' }}
+                                animate={{ width: statusIndex > 0 ? `${(statusIndex / (STATUS_STEPS.length - 1)) * (100 - 8 / STATUS_STEPS.length)}%` : '0%' }}
+                                transition={{ duration: 0.8, ease: 'easeOut' }}
+                            />
+                            {STATUS_STEPS.map((step, i) => {
+                                const done = i < statusIndex
+                                const active = i === statusIndex
+                                return (
+                                    <div key={step} className="flex-1 flex flex-col items-center relative z-10">
+                                        <motion.div
+                                            initial={{ scale: 0.5 }}
+                                            animate={{ scale: 1 }}
+                                            transition={{ duration: 0.3, delay: i * 0.1 }}
+                                            className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all
+                                        ${done ? 'bg-primary-600 border-primary-600 text-white'
+                                                    : active ? 'bg-white dark:bg-surface-900 border-primary-600 text-primary-600 shadow-glow'
+                                                        : 'bg-white dark:bg-surface-800 border-surface-300 dark:border-surface-600 text-surface-400'}`}>
+                                            {done ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg> : i + 1}
+                                        </motion.div>
+                                        <span className={`text-xs mt-2 capitalize font-medium ${done || active ? 'text-primary-600 dark:text-primary-400' : 'text-surface-400'}`}>
+                                            {step}
+                                        </span>
+                                    </div>
+                                )
+                            })}
+                        </div>
+
+                        <div className="mt-4 space-y-1.5">
+                            {order.tracking_number && (
+                                <p className="text-sm text-purple-700 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 px-3 py-2 rounded-xl flex items-center gap-2">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+                                    Tracking: <span className="font-mono font-semibold">{order.tracking_number}</span>
+                                </p>
+                            )}
+                            {order.estimated_delivery && (
+                                <p className="text-sm text-primary-700 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20 px-3 py-2 rounded-xl flex items-center gap-2">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" /></svg>
+                                    Estimated delivery: <strong>{fmt(order.estimated_delivery)}</strong>
+                                </p>
+                            )}
                         </div>
                     </div>
+                ) : isCancelled ? (
+                    <div className="card border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
+                        <p className="text-red-700 dark:text-red-400 font-semibold flex items-center gap-2">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            This order was cancelled.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="card border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-900/20">
+                        <p className="text-teal-700 dark:text-teal-400 font-semibold flex items-center gap-2">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 11l3 3L22 4" /></svg>
+                            Return approved — your refund will be processed within 5-7 business days.
+                        </p>
+                    </div>
                 )}
-            </div>
 
-            {/* Delivery Map */}
-            {order.shipping_address && <DeliveryMap address={order.shipping_address} />}
-        </div>
+                {/* Items */}
+                <div className="card">
+                    <h2 className="font-semibold text-surface-900 dark:text-white mb-4">Items Ordered</h2>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="bg-surface-50 dark:bg-surface-800 border-y border-surface-200 dark:border-surface-700">
+                                    <th className="text-left px-4 py-2.5 text-surface-600 dark:text-surface-400 font-semibold">Product</th>
+                                    <th className="text-center px-4 py-2.5 text-surface-600 dark:text-surface-400 font-semibold w-16">Qty</th>
+                                    <th className="text-right px-4 py-2.5 text-surface-600 dark:text-surface-400 font-semibold w-28">Unit Price</th>
+                                    <th className="text-right px-4 py-2.5 text-surface-600 dark:text-surface-400 font-semibold w-28">Subtotal</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
+                                {order.items.map((item: any) => (
+                                    <tr key={item.order_item_id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
+                                        <td className="px-4 py-3 text-surface-800 dark:text-surface-200 font-medium">
+                                            {item.product_name || <span className="font-mono text-xs text-surface-400">{item.product_id.slice(0, 8)}</span>}
+                                        </td>
+                                        <td className="px-4 py-3 text-center text-surface-600 dark:text-surface-400">{item.quantity}</td>
+                                        <td className="px-4 py-3 text-right text-surface-600 dark:text-surface-400">₹{Number(item.unit_price).toLocaleString('en-IN')}</td>
+                                        <td className="px-4 py-3 text-right font-semibold text-surface-900 dark:text-white">₹{(item.quantity * Number(item.unit_price)).toLocaleString('en-IN')}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                            <tfoot>
+                                {Number(order.deal_discount) > 0 && (
+                                    <tr className="border-t border-surface-200 dark:border-surface-700">
+                                        <td colSpan={3} className="px-4 py-2 text-right text-emerald-700 dark:text-emerald-400 text-sm font-medium">Deal Discount</td>
+                                        <td className="px-4 py-2 text-right text-emerald-700 dark:text-emerald-400 font-semibold">–₹{Number(order.deal_discount).toLocaleString('en-IN')}</td>
+                                    </tr>
+                                )}
+                                <tr className="border-t-2 border-surface-300 dark:border-surface-600 bg-surface-50 dark:bg-surface-800">
+                                    <td colSpan={3} className="px-4 py-3 text-right font-bold text-surface-900 dark:text-white">Grand Total</td>
+                                    <td className="px-4 py-3 text-right font-bold text-primary-600 dark:text-primary-400 text-base">₹{Number(order.total_price).toLocaleString('en-IN')}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Payment & Shipping */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="card">
+                        <h2 className="font-semibold text-surface-900 dark:text-white mb-3">Payment</h2>
+                        <p className="text-sm text-surface-700 dark:text-surface-300 capitalize font-medium">{order.payment_method || '—'}</p>
+                        <span className={`mt-1.5 inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-semibold ${order.payment_status === 'paid' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : order.payment_status === 'failed' ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
+                            {order.payment_status}
+                        </span>
+                        {order.payment_method !== 'cod' && order.payment_status !== 'paid' && order.razorpay_order_id && paymentConfig?.razorpay_key_id && (
+                            <button
+                                onClick={handleRetryPayment}
+                                className="mt-3 btn-primary text-xs py-1.5 px-3 w-full"
+                            >
+                                {order.payment_status === 'failed' ? 'Retry Payment' : 'Complete Payment'}
+                            </button>
+                        )}
+                    </div>
+
+                    {order.shipping_address && (
+                        <div className="card">
+                            <h2 className="font-semibold text-surface-900 dark:text-white mb-3">Shipping Address</h2>
+                            <div className="text-sm text-surface-600 dark:text-surface-400 space-y-1">
+                                <p className="font-semibold text-surface-900 dark:text-white">{order.shipping_address.full_name}</p>
+                                <p className="text-surface-500">{order.shipping_address.phone}</p>
+                                <p>{order.shipping_address.address_line1}</p>
+                                {order.shipping_address.address_line2 && <p>{order.shipping_address.address_line2}</p>}
+                                <p>{order.shipping_address.city}, {order.shipping_address.state} – {order.shipping_address.pincode}</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Delivery Map */}
+                {order.shipping_address && <DeliveryMap address={order.shipping_address} />}
+            </div>
+        </AnimatedPage>
     )
 }
 
-function DeliveryMap({ address }: { address: { address_line1: string; city: string; state: string; pincode: string } }) {
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
-    const { isLoaded } = useJsApiLoader({ googleMapsApiKey: apiKey })
-    const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null)
+function DeliveryMap({ address }: { address: { address_line1: string; city: string; state: string; pincode: string; latitude?: number; longitude?: number } }) {
+    const [position, setPosition] = useState<[number, number] | null>(
+        address.latitude && address.longitude ? [address.latitude, address.longitude] : null
+    )
 
-    const geocode = useCallback(() => {
-        if (!isLoaded || !window.google) return
-        const geocoder = new window.google.maps.Geocoder()
+    const geocode = useCallback(async () => {
+        if (position) return
         const addressStr = `${address.address_line1}, ${address.city}, ${address.state} ${address.pincode}, India`
-        geocoder.geocode({ address: addressStr }, (results: google.maps.GeocoderResult[] | null, status: google.maps.GeocoderStatus) => {
-            if (status === 'OK' && results && results[0]) {
-                setPosition({
-                    lat: results[0].geometry.location.lat(),
-                    lng: results[0].geometry.location.lng(),
-                })
+        try {
+            const res = await fetch(
+                `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addressStr)}&format=json&limit=1&accept-language=en`,
+                { headers: { 'User-Agent': 'ECommerceApp/1.0' } }
+            )
+            const data = await res.json()
+            if (data.length > 0) {
+                setPosition([parseFloat(data[0].lat), parseFloat(data[0].lon)])
             }
-        })
-    }, [isLoaded, address])
+        } catch { /* ignore geocoding errors */ }
+    }, [address, position])
 
     // Geocode on mount
     useState(() => { geocode() })
 
-    if (!apiKey || !isLoaded || !position) return null
+    if (!position) return null
 
     return (
         <div className="card">
-            <h2 className="font-semibold text-gray-900 mb-3">📍 Delivery Location</h2>
-            <GoogleMap
-                mapContainerStyle={{ width: '100%', height: '250px', borderRadius: '0.5rem' }}
-                center={position}
-                zoom={14}
-            >
-                <MarkerF position={position} />
-            </GoogleMap>
+            <h2 className="font-semibold text-surface-900 dark:text-white mb-3 flex items-center gap-2">
+                <svg className="w-5 h-5 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                Delivery Location
+            </h2>
+            <div style={{ height: '250px', borderRadius: '0.5rem', overflow: 'hidden' }}>
+                <MapContainer center={position} zoom={14} style={{ width: '100%', height: '100%' }}>
+                    <TileLayer
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
+                    <Marker position={position} />
+                </MapContainer>
+            </div>
         </div>
     )
 }
