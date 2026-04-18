@@ -73,7 +73,7 @@ async def get_orders(
     user_id_filter: Optional[uuid.UUID] = Query(default=None, alias="user_id"),
     filter_status: Optional[str] = Query(default=None, alias="status"),
     page: int = Query(default=1, ge=1),
-    size: int = Query(default=20, ge=1, le=100),
+    size: int = Query(default=20, ge=1, le=500),
     auth: dict = Depends(_auth),
     db: AsyncSession = Depends(get_db),
 ):

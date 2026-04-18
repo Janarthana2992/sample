@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useWatch } from 'react-hook-form'
 import toast from 'react-hot-toast'
@@ -47,6 +47,8 @@ function DealForm({
     const [selProds, setSelProds] = useState<string[]>(defaultValues?.product_ids ?? [])
     const [prodSearch, setProdSearch] = useState('')
     const [pendingPayload, setPendingPayload] = useState<any>(null)
+    // ids of conflicting deals the admin wants to deactivate
+    const [deactivateIds, setDeactivateIds] = useState<Set<string>>(new Set())
 
     useEffect(() => { reset(defaultValues) }, [])
     // Clear discount_value when switching to a type that has no value
@@ -67,7 +69,7 @@ function DealForm({
         const newEnd = new Date(endDt).getTime()
         if (isNaN(newStart) || isNaN(newEnd) || newEnd <= newStart) return []
 
-        const conflicts: { dealName: string; reason: string }[] = []
+        const conflicts: { dealId: string; dealName: string; reason: string }[] = []
 
         // Build a set of category IDs that the selected products belong to
         const selProdCategoryIds = new Set<string>()
@@ -93,13 +95,13 @@ function DealForm({
 
             // all_products existing deal conflicts with anything
             if (deal.applies_to === 'all_products' && appliesTo !== undefined) {
-                conflicts.push({ dealName: deal.name, reason: 'covers all products' })
+                conflicts.push({ dealId: deal.deal_id, dealName: deal.name, reason: 'covers all products' })
                 continue
             }
 
             // New deal is all_products — conflicts with everything
             if (appliesTo === 'all_products' && deal.applies_to !== undefined) {
-                conflicts.push({ dealName: deal.name, reason: `also applies to ${deal.applies_to === 'specific_category' ? 'overlapping categories' : 'overlapping products'}` })
+                conflicts.push({ dealId: deal.deal_id, dealName: deal.name, reason: `also applies to ${deal.applies_to === 'specific_category' ? 'overlapping categories' : 'overlapping products'}` })
                 continue
             }
 
@@ -108,7 +110,7 @@ function DealForm({
                 const shared = selCats.filter(c => dCats.has(c))
                 if (shared.length > 0) {
                     const sharedNames = shared.map(c => categories.find(x => x.category_id === c)?.name ?? c)
-                    conflicts.push({ dealName: deal.name, reason: `shares categories: ${sharedNames.join(', ')}` })
+                    conflicts.push({ dealId: deal.deal_id, dealName: deal.name, reason: `shares categories: ${sharedNames.join(', ')}` })
                 }
             }
 
@@ -117,7 +119,7 @@ function DealForm({
                 const shared = selProds.filter(p => dProds.has(p))
                 if (shared.length > 0) {
                     const sharedNames = shared.map(pid => products.find(x => x.product_id === pid)?.name ?? pid)
-                    conflicts.push({ dealName: deal.name, reason: `shares products: ${sharedNames.slice(0, 3).join(', ')}${shared.length > 3 ? ` +${shared.length - 3} more` : ''}` })
+                    conflicts.push({ dealId: deal.deal_id, dealName: deal.name, reason: `shares products: ${sharedNames.slice(0, 3).join(', ')}${shared.length > 3 ? ` +${shared.length - 3} more` : ''}` })
                 }
             }
 
@@ -126,7 +128,7 @@ function DealForm({
                 const sharedCats = [...selProdCategoryIds].filter(c => dCats.has(c))
                 if (sharedCats.length > 0) {
                     const sharedNames = sharedCats.map(c => categories.find(x => x.category_id === c)?.name ?? c)
-                    conflicts.push({ dealName: deal.name, reason: `already covers the categories these products belong to: ${sharedNames.join(', ')}` })
+                    conflicts.push({ dealId: deal.deal_id, dealName: deal.name, reason: `already covers the categories these products belong to: ${sharedNames.join(', ')}` })
                 }
             }
 
@@ -137,7 +139,7 @@ function DealForm({
                 )
                 if (affectedProds.length > 0) {
                     const names = affectedProds.slice(0, 3).map(p => p.name)
-                    conflicts.push({ dealName: deal.name, reason: `has specific products in your selected categories: ${names.join(', ')}${affectedProds.length > 3 ? ` +${affectedProds.length - 3} more` : ''}` })
+                    conflicts.push({ dealId: deal.deal_id, dealName: deal.name, reason: `has specific products in your selected categories: ${names.join(', ')}${affectedProds.length > 3 ? ` +${affectedProds.length - 3} more` : ''}` })
                 }
             }
         }
@@ -174,6 +176,7 @@ function DealForm({
         else if (data.applies_to === 'specific_skus') payload.product_ids = selProds
 
         if (overlaps.length > 0) {
+            setDeactivateIds(new Set()) // reset selections each time modal opens
             setPendingPayload(payload)
             return
         }
@@ -344,7 +347,7 @@ function DealForm({
             {/* Conflict confirmation modal */}
             {pendingPayload && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-white dark:bg-surface-900 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
+                    <div className="bg-white dark:bg-surface-900 rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl">
                         <div className="flex items-center gap-3">
                             <span className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
                                 <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -353,21 +356,55 @@ function DealForm({
                             </span>
                             <div>
                                 <h3 className="font-semibold text-surface-900 dark:text-white">Overlapping deals detected</h3>
-                                <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">{overlaps.length} deal{overlaps.length > 1 ? 's' : ''} overlap with this one</p>
+                                <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">{overlaps.length} deal{overlaps.length > 1 ? 's' : ''} overlap with this one during the selected time window</p>
                             </div>
                         </div>
-                        <ul className="space-y-1">
+
+                        <p className="text-sm text-surface-600 dark:text-surface-400">Choose which conflicting deals to <strong>deactivate</strong> before saving, or save with all deals active (they may stack at checkout).</p>
+
+                        <ul className="space-y-2">
                             {overlaps.map((c, i) => (
-                                <li key={i} className="text-xs text-amber-800 dark:text-amber-300 flex items-start gap-1.5">
-                                    <span className="shrink-0 mt-0.5 w-3.5 h-3.5 rounded-full bg-amber-200 dark:bg-amber-800 flex items-center justify-center text-[9px] font-bold">{i + 1}</span>
-                                    <span><strong>{c.dealName}</strong> — {c.reason}</span>
+                                <li key={c.dealId} className="flex items-start gap-3 p-3 rounded-xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800">
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-semibold text-surface-900 dark:text-white">{c.dealName}</p>
+                                        <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">{c.reason}</p>
+                                    </div>
+                                    <label className="flex items-center gap-2 shrink-0 cursor-pointer select-none">
+                                        <input
+                                            type="checkbox"
+                                            className="rounded accent-red-500"
+                                            checked={deactivateIds.has(c.dealId)}
+                                            onChange={() => setDeactivateIds(prev => {
+                                                const next = new Set(prev)
+                                                next.has(c.dealId) ? next.delete(c.dealId) : next.add(c.dealId)
+                                                return next
+                                            })}
+                                        />
+                                        <span className="text-xs font-medium text-red-600 dark:text-red-400 whitespace-nowrap">Deactivate</span>
+                                    </label>
                                 </li>
                             ))}
                         </ul>
-                        <p className="text-sm text-surface-600 dark:text-surface-400">Multiple active deals may stack at checkout. Save anyway?</p>
+
+                        {deactivateIds.size > 0 && (
+                            <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
+                                {deactivateIds.size} deal{deactivateIds.size > 1 ? 's' : ''} will be deactivated immediately when you save.
+                            </p>
+                        )}
+
                         <div className="flex gap-3">
-                            <button type="button" onClick={() => setPendingPayload(null)} className="btn-secondary flex-1">Cancel</button>
-                            <button type="button" onClick={() => { onSubmit(pendingPayload); setPendingPayload(null) }} className="btn-primary flex-1">Save Anyway</button>
+                            <button type="button" onClick={() => { setPendingPayload(null); setDeactivateIds(new Set()) }} className="btn-secondary flex-1">Cancel</button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    onSubmit({ ...pendingPayload, _deactivateIds: [...deactivateIds] })
+                                    setPendingPayload(null)
+                                    setDeactivateIds(new Set())
+                                }}
+                                className="btn-primary flex-1"
+                            >
+                                {deactivateIds.size > 0 ? `Deactivate ${deactivateIds.size} & Save` : 'Save Anyway'}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -408,7 +445,13 @@ export default function AdminDeals() {
     const products: Product[] = (productsData as any) ?? []
 
     const createMutation = useMutation({
-        mutationFn: (data: object) => productService.createDeal(data),
+        mutationFn: async (data: any) => {
+            const { _deactivateIds, ...payload } = data
+            if (_deactivateIds?.length) {
+                await Promise.all((_deactivateIds as string[]).map(id => productService.updateDeal(id, { is_active: false })))
+            }
+            return productService.createDeal(payload)
+        },
         onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'deals'] }); setShowCreate(false); toast.success('Deal created!') },
         onError: (err: any) => {
             const detail = err.response?.data?.detail
@@ -418,7 +461,13 @@ export default function AdminDeals() {
     })
 
     const updateMutation = useMutation({
-        mutationFn: ({ id, data }: { id: string; data: object }) => productService.updateDeal(id, data),
+        mutationFn: async ({ id, data }: { id: string; data: any }) => {
+            const { _deactivateIds, ...payload } = data
+            if (_deactivateIds?.length) {
+                await Promise.all((_deactivateIds as string[]).map(did => productService.updateDeal(did, { is_active: false })))
+            }
+            return productService.updateDeal(id, payload)
+        },
         onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'deals'] }); setEditDeal(null); toast.success('Deal updated') },
         onError: (err: any) => {
             const detail = err.response?.data?.detail
