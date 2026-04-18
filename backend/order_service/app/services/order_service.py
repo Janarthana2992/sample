@@ -180,8 +180,17 @@ async def create_order(db: AsyncSession, user_id: str, payload: CheckoutRequest)
         except Exception as exc:
             logger.warning("Failed to clear cart after order creation: %s", exc)
 
-    await db.refresh(order, ["items", "shipping_address", "status_history"])
-    return order
+    # Re-query with eager loading (db.refresh on relationships causes MissingGreenlet in async)
+    result = await db.execute(
+        select(Order)
+        .where(Order.order_id == order.order_id)
+        .options(
+            selectinload(Order.items),
+            selectinload(Order.shipping_address),
+            selectinload(Order.status_history),
+        )
+    )
+    return result.scalar_one()
 
 
 async def get_order(db: AsyncSession, order_id: uuid.UUID, user_id: str, role: str) -> Order:
@@ -275,5 +284,8 @@ async def update_order_status(
         note=payload.note,
     ))
     await db.commit()
-    await db.refresh(order, ["items", "shipping_address", "status_history"])
-    return order
+    result = await db.execute(
+        select(Order).where(Order.order_id == order.order_id)
+        .options(selectinload(Order.items), selectinload(Order.shipping_address), selectinload(Order.status_history))
+    )
+    return result.scalar_one()

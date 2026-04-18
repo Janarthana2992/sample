@@ -129,8 +129,11 @@ async def customer_cancel_order(
     order.cancel_reason = payload.reason
     db.add(OrderStatusHistory(order_id=order.order_id, from_status=prev_status, to_status="cancelled", note=f"Cancelled by customer: {payload.reason}"))
     await db.commit()
-    await db.refresh(order, ["items", "shipping_address", "status_history"])
-    return order
+    result = await db.execute(
+        select(OrderModel).where(OrderModel.order_id == order_id)
+        .options(selectinload(OrderModel.items), selectinload(OrderModel.shipping_address), selectinload(OrderModel.status_history))
+    )
+    return result.scalar_one()
 
 
 @router.post("/orders/{order_id}/return", response_model=OrderOut)
@@ -161,8 +164,11 @@ async def customer_return_order(
     order.return_reason = payload.reason
     db.add(OrderStatusHistory(order_id=order.order_id, from_status="delivered", to_status="return_requested", note=f"Return requested by customer: {payload.reason}"))
     await db.commit()
-    await db.refresh(order, ["items", "shipping_address", "status_history"])
-    return order
+    result = await db.execute(
+        select(OrderModel).where(OrderModel.order_id == order_id)
+        .options(selectinload(OrderModel.items), selectinload(OrderModel.shipping_address), selectinload(OrderModel.status_history))
+    )
+    return result.scalar_one()
 
 
 @router.post("/orders/{order_id}/approve-return", response_model=OrderOut)
@@ -195,8 +201,11 @@ async def admin_approve_return(
     db.add(OrderStatusHistory(order_id=order.order_id, from_status="return_requested", to_status=new_status, note=note))
     order.status = new_status
     await db.commit()
-    await db.refresh(order, ["items", "shipping_address", "status_history"])
-    return order
+    result = await db.execute(
+        select(OrderModel).where(OrderModel.order_id == order_id)
+        .options(selectinload(OrderModel.items), selectinload(OrderModel.shipping_address), selectinload(OrderModel.status_history))
+    )
+    return result.scalar_one()
 
 
 @router.patch("/orders/{order_id}/status", response_model=OrderOut)
@@ -252,7 +261,11 @@ async def verify_payment(
     order.razorpay_signature = payload.razorpay_signature
     order.payment_status = "paid"
     await db.commit()
-    await db.refresh(order, ["items", "shipping_address", "status_history"])
+    fresh = await db.execute(
+        select(OrderModel).where(OrderModel.order_id == order_id)
+        .options(selectinload(OrderModel.items), selectinload(OrderModel.shipping_address), selectinload(OrderModel.status_history))
+    )
+    order = fresh.scalar_one()
 
     # Clear the cart now that payment is confirmed (deferred from order creation)
     try:
