@@ -168,7 +168,20 @@ export default function Checkout() {
             const rzp = new window.Razorpay(options)
             rzp.open()
         },
-        onError: (err: any) => toast.error(err.response?.data?.detail || 'Checkout failed'),
+        onError: (err: any) => {
+            const detail = err.response?.data?.detail
+            let message = 'Checkout failed'
+            if (typeof detail === 'string') {
+                message = detail
+            } else if (Array.isArray(detail) && detail.length > 0) {
+                // Pydantic validation errors — pick the first one
+                const first = detail[0]
+                message = first?.msg || first?.message || JSON.stringify(first)
+            } else if (err.message && !err.response) {
+                message = 'Cannot connect to server. Please check your connection and try again.'
+            }
+            toast.error(message)
+        },
     })
 
     if (cartLoading) return <LoadingSpinner />
