@@ -40,11 +40,10 @@ RUN printf 'server {\n\
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml image/svg+xml;\n\
     \n\
     location ^~ /static/products/ {\n\
-    proxy_pass http://product_service:8002/static/products/;\n\
-    proxy_set_header Host $host;\n\
-    proxy_cache_bypass 1;\n\
+    alias /usr/share/nginx/product_uploads/;\n\
     expires 30d;\n\
     add_header Cache-Control "public";\n\
+    try_files $uri =404;\n\
     }\n\
     \n\
     location / {\n\

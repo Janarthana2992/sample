@@ -296,6 +296,7 @@ services:
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - product_uploads:/usr/share/nginx/product_uploads:ro
     depends_on:
       - auth_service
       - product_service

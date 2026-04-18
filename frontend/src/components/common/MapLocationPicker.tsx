@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import toast from 'react-hot-toast'
 
 // Fix default marker icon for Leaflet + bundlers
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
@@ -89,6 +90,7 @@ export function MapLocationPicker({ onLocationSelect, initialPosition, className
     const [searchText, setSearchText] = useState('')
     const [suggestions, setSuggestions] = useState<any[]>([])
     const [locating, setLocating] = useState(false)
+    const [locError, setLocError] = useState<string | null>(null)
     const [searching, setSearching] = useState(false)
     const [fetchedCoords, setFetchedCoords] = useState<{ lat: number; lng: number } | null>(null)
     const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -130,8 +132,13 @@ export function MapLocationPicker({ onLocationSelect, initialPosition, className
     }, [onLocationSelect])
 
     const handleCurrentLocation = useCallback(() => {
-        if (!navigator.geolocation) return
+        if (!navigator.geolocation) {
+            toast.error('Your browser does not support location access')
+            setLocError('Geolocation is not supported by your browser.')
+            return
+        }
         setLocating(true)
+        setLocError(null)
         navigator.geolocation.getCurrentPosition(
             async (pos) => {
                 const lat = pos.coords.latitude
@@ -142,8 +149,21 @@ export function MapLocationPicker({ onLocationSelect, initialPosition, className
                 setFetchedCoords({ lat, lng })
                 onLocationSelect({ lat, lng, ...addr })
                 setLocating(false)
+                setLocError(null)
             },
-            () => { setLocating(false) },
+            (err) => {
+                setLocating(false)
+                let msg = 'Could not get your location.'
+                if (err.code === 1) {
+                    msg = 'Location permission denied. Please allow location access in your browser settings, then try again.'
+                } else if (err.code === 2) {
+                    msg = 'Location unavailable. Try searching for your address instead.'
+                } else if (err.code === 3) {
+                    msg = 'Location request timed out. Please try again or search manually.'
+                }
+                setLocError(msg)
+                toast.error(msg, { duration: 5000 })
+            },
             { enableHighAccuracy: true, timeout: 10000 }
         )
     }, [onLocationSelect])
@@ -193,6 +213,25 @@ export function MapLocationPicker({ onLocationSelect, initialPosition, className
                     <span className="hidden sm:inline">{locating ? 'Locating...' : 'Use My Location'}</span>
                 </button>
             </div>
+
+            {/* Location error banner */}
+            {locError && (
+                <div className="flex items-start gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2 text-xs text-red-700 dark:text-red-400">
+                    <svg className="w-3.5 h-3.5 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                    </svg>
+                    <span>{locError}</span>
+                    <button
+                        type="button"
+                        onClick={() => setLocError(null)}
+                        className="ml-auto text-red-400 hover:text-red-600 shrink-0"
+                    >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            )}
 
             {/* Map */}
             <div className="relative rounded-lg overflow-hidden border border-gray-200 shadow-sm" style={{ height: '300px' }}>
