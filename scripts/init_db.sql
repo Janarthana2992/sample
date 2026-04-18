@@ -438,4 +438,8 @@ VALUES (
         'Platform Admin',
         '$2b$12$PWNp2WaN.iPPdOom169oqOm3wbatUaFxXeHMqq04M3nG4UW0TMYEW',
         'admin'
+    )
+ON CONFLICT (email) DO NOTHING;
+-- END OF SEED
+SELECT 1
     ) ON CONFLICT (email) DO NOTHING;

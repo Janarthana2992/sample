@@ -104,6 +104,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     ports:
       - "8001:8001"
     healthcheck:
@@ -137,6 +139,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
       elasticsearch:
         condition: service_healthy
       redis:
@@ -206,6 +210,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
       cart_service:
         condition: service_started
     ports:
@@ -242,6 +248,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     ports:
@@ -254,6 +262,23 @@ services:
       timeout: 10s
       retries: 3
       start_period: 120s
+
+  # ──────────────── DB Init (runs every docker-compose up) ────────────────
+  db-init:
+    image: postgres:16-alpine
+    container_name: ecom_db_init
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-ecom_pass}
+    volumes:
+      - ./scripts/init_db.sql:/init_db.sql:ro
+    entrypoint: [
+      "sh", "-c",
+      "psql -h postgres -U ${POSTGRES_USER:-ecom_user} -d ${POSTGRES_DB:-ecom_db} -f /init_db.sql"
+    ]
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   # ──────────────── Frontend ────────────────
   frontend:
