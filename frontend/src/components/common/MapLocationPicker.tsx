@@ -132,6 +132,13 @@ export function MapLocationPicker({ onLocationSelect, initialPosition, className
     }, [onLocationSelect])
 
     const handleCurrentLocation = useCallback(() => {
+        // Geolocation requires HTTPS in production; HTTP (non-localhost) will be silently blocked
+        if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            const msg = 'Location access requires a secure (HTTPS) connection. Please search for your address manually instead.'
+            setLocError(msg)
+            toast.error(msg, { duration: 6000 })
+            return
+        }
         if (!navigator.geolocation) {
             toast.error('Your browser does not support location access')
             setLocError('Geolocation is not supported by your browser.')

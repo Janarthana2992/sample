@@ -147,7 +147,7 @@ async def create_order(db: AsyncSession, user_id: str, payload: CheckoutRequest)
     if not is_cod and settings.RAZORPAY_KEY_ID:
         try:
             from app.services.payment_service import create_razorpay_order
-            amount_paise = int(discounted_total * 100)
+            amount_paise = int((discounted_total * Decimal("100")).quantize(Decimal("1")))
             rz_order = create_razorpay_order(amount_paise, str(order.order_id)[:40])
             order.razorpay_order_id = rz_order["id"]
             await db.commit()

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
@@ -51,8 +51,6 @@ export default function Home() {
     const { user } = useAuthStore()
     const recentViews = getViewedProducts()
     const recentSearches = getRecentSearches()
-    const marqueeRef = useRef<HTMLDivElement>(null)
-    const [isPaused, setIsPaused] = useState(false)
 
     const { data: featuredData, isLoading: isFeaturedLoading } = useQuery({
         queryKey: ['products', 'featured-marquee'],
@@ -240,7 +238,7 @@ export default function Home() {
                     </div>
                 </section>
 
-                {/* Featured / Promoted Products – auto-scrolling marquee */}
+                {/* Featured / Promoted Products – horizontal scroll */}
                 {marqueeProducts.length > 0 && (
                     <FadeInView>
                         <section>
@@ -254,30 +252,12 @@ export default function Home() {
                                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
                                 </Link>
                             </div>
-                            <div
-                                className="relative overflow-hidden"
-                                onMouseEnter={() => setIsPaused(true)}
-                                onMouseLeave={() => setIsPaused(false)}
-                            >
-                                {/* Fade edges */}
-                                <div className="pointer-events-none absolute inset-y-0 left-0 w-12 z-10 bg-gradient-to-r from-white dark:from-gray-950 to-transparent" />
-                                <div className="pointer-events-none absolute inset-y-0 right-0 w-12 z-10 bg-gradient-to-l from-white dark:from-gray-950 to-transparent" />
-
-                                <div
-                                    ref={marqueeRef}
-                                    className="flex gap-4 w-max"
-                                    style={{
-                                        animation: `marquee-scroll ${marqueeProducts.length * 4}s linear infinite`,
-                                        animationPlayState: isPaused ? 'paused' : 'running',
-                                    }}
-                                >
-                                    {/* Duplicate items for seamless loop */}
-                                    {[...marqueeProducts, ...marqueeProducts].map((p, i) => (
-                                        <div key={`${p.product_id}-${i}`} className="shrink-0 w-52">
-                                            <ProductCard product={p} />
-                                        </div>
-                                    ))}
-                                </div>
+                            <div className="flex gap-4 overflow-x-auto pb-3 -mx-1 px-1 snap-x snap-mandatory scrollbar-hide">
+                                {marqueeProducts.map((p) => (
+                                    <div key={p.product_id} className="shrink-0 w-52 snap-start">
+                                        <ProductCard product={p} />
+                                    </div>
+                                ))}
                             </div>
                         </section>
                     </FadeInView>

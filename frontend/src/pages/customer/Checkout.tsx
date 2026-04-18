@@ -102,53 +102,71 @@ export default function Checkout() {
             paymentMethod,
             buyNowProductId ? [buyNowProductId] : undefined,
         ),
-        onSuccess: (order) => {
-            // For non-COD with Razorpay configured, open payment modal
-            if (paymentMethod !== 'cod' && order.razorpay_order_id && paymentConfig?.razorpay_key_id && window.Razorpay) {
-                const options = {
-                    key: paymentConfig.razorpay_key_id,
-                    amount: Math.round(Number(order.total_price) * 100),
-                    currency: 'INR',
-                    name: 'ShopHere',
-                    description: `Order #${order.order_id.slice(0, 8).toUpperCase()}`,
-                    order_id: order.razorpay_order_id,
-                    prefill: {
-                        name: user?.full_name || '',
-                        email: user?.email || '',
-                    },
-                    handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
-                        try {
-                            await orderService.verifyPayment(order.order_id, {
-                                razorpay_order_id: response.razorpay_order_id,
-                                razorpay_payment_id: response.razorpay_payment_id,
-                                razorpay_signature: response.razorpay_signature,
-                            })
-                            if (!buyNowProductId) clearCart()
-                            toast.success('Payment successful!')
-                            navigate(`/orders/${order.order_id}`)
-                        } catch {
-                            toast.error('Payment verification failed. Please try again.')
-                            setPaymentCancelled(true)
-                            setStep(2)
-                            try { await orderService.cancelOrder(order.order_id, 'Payment verification failed') } catch { /* ignore */ }
-                        }
-                    },
-                    modal: {
-                        ondismiss: async () => {
-                            setPaymentCancelled(true)
-                            setStep(2)
-                            try { await orderService.cancelOrder(order.order_id, 'Payment cancelled by user') } catch { /* ignore */ }
-                        },
-                    },
-                    theme: { color: '#2563eb' },
-                }
-                const rzp = new window.Razorpay(options)
-                rzp.open()
-            } else {
+        onSuccess: async (order) => {
+            // COD: order done immediately
+            if (paymentMethod === 'cod') {
                 if (!buyNowProductId) clearCart()
                 toast.success('Order placed successfully!')
                 navigate(`/orders/${order.order_id}`)
+                return
             }
+
+            // Online payment — validate prerequisites
+            if (!window.Razorpay) {
+                toast.error('Payment gateway failed to load. Please refresh the page and try again.')
+                try { await orderService.cancelOrder(order.order_id, 'Razorpay SDK not loaded') } catch { /* ignore */ }
+                setPaymentCancelled(true)
+                setStep(2)
+                return
+            }
+
+            if (!order.razorpay_order_id || !paymentConfig?.razorpay_key_id) {
+                toast.error('Payment gateway is not configured. Please contact support or choose Cash on Delivery.')
+                try { await orderService.cancelOrder(order.order_id, 'Razorpay not configured on server') } catch { /* ignore */ }
+                setPaymentCancelled(true)
+                setStep(2)
+                return
+            }
+
+            const options = {
+                key: paymentConfig.razorpay_key_id,
+                amount: Math.round(Number(order.total_price) * 100),
+                currency: 'INR',
+                name: 'ShopHere',
+                description: `Order #${order.order_id.slice(0, 8).toUpperCase()}`,
+                order_id: order.razorpay_order_id,
+                prefill: {
+                    name: user?.full_name || '',
+                    email: user?.email || '',
+                },
+                handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+                    try {
+                        await orderService.verifyPayment(order.order_id, {
+                            razorpay_order_id: response.razorpay_order_id,
+                            razorpay_payment_id: response.razorpay_payment_id,
+                            razorpay_signature: response.razorpay_signature,
+                        })
+                        if (!buyNowProductId) clearCart()
+                        toast.success('Payment successful!')
+                        navigate(`/orders/${order.order_id}`)
+                    } catch {
+                        toast.error('Payment verification failed. Please try again.')
+                        setPaymentCancelled(true)
+                        setStep(2)
+                        try { await orderService.cancelOrder(order.order_id, 'Payment verification failed') } catch { /* ignore */ }
+                    }
+                },
+                modal: {
+                    ondismiss: async () => {
+                        setPaymentCancelled(true)
+                        setStep(2)
+                        try { await orderService.cancelOrder(order.order_id, 'Payment cancelled by user') } catch { /* ignore */ }
+                    },
+                },
+                theme: { color: '#2563eb' },
+            }
+            const rzp = new window.Razorpay(options)
+            rzp.open()
         },
         onError: (err: any) => toast.error(err.response?.data?.detail || 'Checkout failed'),
     })
