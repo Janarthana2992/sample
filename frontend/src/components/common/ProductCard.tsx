@@ -6,6 +6,18 @@ import { cartService } from '../../services/cart'
 import { useAuthStore } from '../../store/authStore'
 import type { Product } from '../../types'
 
+/** Strip any absolute localhost/127.0.0.1 origin so images work in production via Nginx proxy */
+function normalizeImageUrl(url: string | undefined): string | undefined {
+    if (!url) return undefined
+    try {
+        const parsed = new URL(url)
+        if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+            return parsed.pathname + parsed.search
+        }
+    } catch { /* relative URL — fine as-is */ }
+    return url
+}
+
 interface Props {
     product: Product | { product_id: string; name: string; mrp: number; selling_price: number; stock_status: string; images?: { url: string }[]; image_url?: string; score?: number; promotion_badge?: string; is_featured?: boolean; is_promoted?: boolean; rating?: number; review_count?: number }
 }
@@ -49,9 +61,11 @@ export function ProductCard({ product }: Props) {
         ? Math.round(((product.mrp - product.selling_price) / product.mrp) * 100)
         : 0
 
-    const imageUrl = 'images' in product && product.images?.[0]?.url
-        ? product.images[0].url
-        : ('image_url' in product ? product.image_url : undefined)
+    const imageUrl = normalizeImageUrl(
+        'images' in product && product.images?.[0]?.url
+            ? product.images[0].url
+            : ('image_url' in product ? product.image_url : undefined)
+    )
     const promotionBadge = 'promotion_badge' in product ? product.promotion_badge : undefined
     const isFeatured = 'is_featured' in product ? product.is_featured : false
     const isOutOfStock = product.stock_status === 'out_of_stock'
@@ -94,6 +108,7 @@ export function ProductCard({ product }: Props) {
                                 src={imageUrl}
                                 alt={product.name}
                                 loading="lazy"
+                                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                             />
                         ) : (

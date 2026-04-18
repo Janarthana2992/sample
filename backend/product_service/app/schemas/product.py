@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import List, Optional
 import uuid
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # ── Category ────────────────────────────────────────────────
@@ -122,6 +122,18 @@ class ProductOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode='after')
+    def sync_stock_status(self) -> 'ProductOut':
+        """Auto-correct stock_status from stock_quantity to prevent stale/inconsistent data."""
+        if self.stock_quantity <= 0:
+            self.stock_status = 'out_of_stock'
+        elif self.stock_quantity <= 10 and self.stock_status == 'out_of_stock':
+            # qty > 0 but status says out_of_stock — correct it
+            self.stock_status = 'low_stock'
+        elif self.stock_quantity > 10 and self.stock_status == 'out_of_stock':
+            self.stock_status = 'in_stock'
+        return self
 
     @classmethod
     def model_validate(cls, obj, **kwargs):

@@ -14,6 +14,16 @@ import { StarRating } from '../../components/common/StarRating'
 import { AnimatedPage, FadeInView } from '../../components/common/AnimatedPage'
 import { aiClient } from '../../services/api'
 
+/** Strip localhost origin from image URLs so they work via Nginx in production */
+function normalizeImageUrl(url: string | undefined): string | undefined {
+    if (!url) return undefined
+    try {
+        const p = new URL(url)
+        if (p.hostname === 'localhost' || p.hostname === '127.0.0.1') return p.pathname + p.search
+    } catch { /* relative — fine */ }
+    return url
+}
+
 // ── View tracking helpers ────────────────────────────────────
 const VIEWED_KEY = 'sp_viewed_products'
 const MAX_VIEWED = 12
@@ -231,7 +241,7 @@ export default function ProductDetail() {
                         <div className="aspect-square rounded-2xl overflow-hidden bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 shadow-card">
                             <AnimatePresence mode="wait">
                                 {product.images[selectedImage] ? (
-                                    <motion.img key={selectedImage} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} src={product.images[selectedImage].url} alt={product.name} className="w-full h-full object-cover" />
+                                    <motion.img key={selectedImage} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} src={normalizeImageUrl(product.images[selectedImage].url)} alt={product.name} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} className="w-full h-full object-cover" />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center">
                                         <svg className="w-24 h-24 text-surface-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
@@ -247,7 +257,7 @@ export default function ProductDetail() {
                                         onClick={() => setSelectedImage(i)}
                                         className={`shrink-0 w-18 h-18 rounded-xl overflow-hidden border-2 transition-all duration-200 ${selectedImage === i ? 'border-primary-500 ring-2 ring-primary-500/20 scale-105' : 'border-surface-200 dark:border-surface-700 hover:border-primary-300'}`}
                                     >
-                                        <img src={img.url} alt="" className="w-full h-full object-cover" />
+                                        <img src={normalizeImageUrl(img.url)} alt="" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} className="w-full h-full object-cover" />
                                     </button>
                                 ))}
                             </div>
@@ -396,7 +406,7 @@ export default function ProductDetail() {
                                 <div className="shrink-0 w-36 rounded-2xl border-2 border-primary-500 overflow-hidden bg-white dark:bg-surface-800 shadow-card">
                                     <div className="w-full aspect-square bg-surface-100 dark:bg-surface-700 flex items-center justify-center overflow-hidden">
                                         {product.images[0]
-                                            ? <img src={product.images[0].url} alt={product.name} className="w-full h-full object-cover" />
+                                            ? <img src={normalizeImageUrl(product.images[0].url)} alt={product.name} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} className="w-full h-full object-cover" />
                                             : <svg className="w-10 h-10 text-surface-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
                                         }
                                     </div>
@@ -411,7 +421,7 @@ export default function ProductDetail() {
                                         <Link to={`/products/${item.product_id}`} className="shrink-0 w-36 rounded-2xl border border-surface-200 dark:border-surface-700 hover:shadow-card-hover transition-all overflow-hidden bg-white dark:bg-surface-800">
                                             <div className="w-full aspect-square bg-surface-100 dark:bg-surface-700 flex items-center justify-center overflow-hidden">
                                                 {item.image_url
-                                                    ? <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                                                    ? <img src={normalizeImageUrl(item.image_url)} alt={item.name} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} className="w-full h-full object-cover" />
                                                     : <svg className="w-10 h-10 text-surface-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
                                                 }
                                             </div>
