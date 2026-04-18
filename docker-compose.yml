@@ -136,6 +136,7 @@ services:
       AI_SERVICE_URL: http://ai_service:8005
       REDIS_URL: redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/2
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      LOW_STOCK_THRESHOLD: ${LOW_STOCK_THRESHOLD:-10}
     depends_on:
       postgres:
         condition: service_healthy

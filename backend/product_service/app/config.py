@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     FRONTEND_URL: str = "http://localhost:5173"
     AI_SERVICE_URL: str = "http://ai_service:8005"
+    LOW_STOCK_THRESHOLD: int = 10  # qty <= this is considered low_stock
 
     @field_validator("JWT_SECRET_KEY")
     @classmethod

@@ -4,6 +4,7 @@ from typing import List, Optional
 import uuid
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+from app.config import settings
 
 
 # ── Category ────────────────────────────────────────────────
@@ -128,10 +129,10 @@ class ProductOut(BaseModel):
         """Auto-correct stock_status from stock_quantity to prevent stale/inconsistent data."""
         if self.stock_quantity <= 0:
             self.stock_status = 'out_of_stock'
-        elif self.stock_quantity <= 10 and self.stock_status == 'out_of_stock':
+        elif self.stock_quantity <= settings.LOW_STOCK_THRESHOLD and self.stock_status == 'out_of_stock':
             # qty > 0 but status says out_of_stock — correct it
             self.stock_status = 'low_stock'
-        elif self.stock_quantity > 10 and self.stock_status == 'out_of_stock':
+        elif self.stock_quantity > settings.LOW_STOCK_THRESHOLD and self.stock_status == 'out_of_stock':
             self.stock_status = 'in_stock'
         return self
 

@@ -26,7 +26,7 @@ MAX_IMAGES = 8
 def _compute_stock_status(qty: int) -> str:
     if qty == 0:
         return "out_of_stock"
-    if qty <= 10:
+    if qty <= settings.LOW_STOCK_THRESHOLD:
         return "low_stock"
     return "in_stock"
 
