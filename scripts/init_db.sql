@@ -24,9 +24,9 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_users_email ON users (email);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 
-CREATE INDEX idx_users_role ON users (role);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users (role);
 
 CREATE TABLE IF NOT EXISTS staff_permissions (
     permission_id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS staff_permissions (
     UNIQUE (user_id, module)
 );
 
-CREATE INDEX idx_staff_perms_user ON staff_permissions (user_id);
+CREATE INDEX IF NOT EXISTS idx_staff_perms_user ON staff_permissions (user_id);
 
 -- OTP / password reset tokens
 CREATE TABLE IF NOT EXISTS auth_tokens (
@@ -63,9 +63,9 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_auth_tokens_user ON auth_tokens (user_id);
+CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens (user_id);
 
-CREATE INDEX idx_auth_tokens_hash ON auth_tokens (token_hash);
+CREATE INDEX IF NOT EXISTS idx_auth_tokens_hash ON auth_tokens (token_hash);
 
 -- =============================================================
 -- CATEGORIES
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS categories (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_categories_parent ON categories (parent_id);
+CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories (parent_id);
 
 -- =============================================================
 -- PRODUCTS
@@ -115,23 +115,23 @@ CREATE TABLE IF NOT EXISTS products (
     updated_at      TIMESTAMPTZ
 );
 
-CREATE INDEX idx_products_sku ON products (sku);
+CREATE INDEX IF NOT EXISTS idx_products_sku ON products (sku);
 
-CREATE INDEX idx_products_active ON products (is_active);
+CREATE INDEX IF NOT EXISTS idx_products_active ON products (is_active);
 
-CREATE INDEX idx_products_featured ON products (
+CREATE INDEX IF NOT EXISTS idx_products_featured ON products (
     is_featured,
     promotion_priority DESC
 );
 
-CREATE INDEX idx_products_promoted ON products (
+CREATE INDEX IF NOT EXISTS idx_products_promoted ON products (
     is_promoted,
     promotion_priority DESC
 );
 
-CREATE INDEX idx_products_stock ON products (stock_status);
+CREATE INDEX IF NOT EXISTS idx_products_stock ON products (stock_status);
 
-CREATE INDEX idx_products_created ON products (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_products_created ON products (created_at DESC);
 
 CREATE TABLE IF NOT EXISTS product_categories (
     product_id UUID NOT NULL REFERENCES products (product_id) ON DELETE CASCADE,
@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS product_images (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_product_images_product ON product_images (product_id);
+CREATE INDEX IF NOT EXISTS idx_product_images_product ON product_images (product_id);
 
 -- =============================================================
 -- PRODUCT VARIANTS (colour / size SKUs)
@@ -173,9 +173,9 @@ CREATE TABLE IF NOT EXISTS product_variants (
     updated_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_variants_product ON product_variants (product_id);
+CREATE INDEX IF NOT EXISTS idx_variants_product ON product_variants (product_id);
 
-CREATE INDEX idx_variants_sku ON product_variants (sku);
+CREATE INDEX IF NOT EXISTS idx_variants_sku ON product_variants (sku);
 
 -- =============================================================
 -- DEALS & OFFERS
@@ -213,7 +213,7 @@ CREATE TABLE IF NOT EXISTS deals (
     CHECK (end_datetime > start_datetime)
 );
 
-CREATE INDEX idx_deals_active ON deals (
+CREATE INDEX IF NOT EXISTS idx_deals_active ON deals (
     is_active,
     start_datetime,
     end_datetime
@@ -248,9 +248,9 @@ CREATE TABLE IF NOT EXISTS reviews (
     UNIQUE (product_id, user_id, order_id)
 );
 
-CREATE INDEX idx_reviews_product ON reviews (product_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_product ON reviews (product_id);
 
-CREATE INDEX idx_reviews_user ON reviews (user_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_user ON reviews (user_id);
 
 CREATE TABLE IF NOT EXISTS review_replies (
     reply_id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
@@ -300,9 +300,9 @@ CREATE TABLE IF NOT EXISTS addresses (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_addresses_user ON addresses (user_id);
+CREATE INDEX IF NOT EXISTS idx_addresses_user ON addresses (user_id);
 
-CREATE INDEX idx_addresses_pincode ON addresses (pincode);
+CREATE INDEX IF NOT EXISTS idx_addresses_pincode ON addresses (pincode);
 
 -- =============================================================
 -- ORDERS
@@ -352,11 +352,11 @@ CREATE TABLE IF NOT EXISTS orders (
     updated_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_orders_user ON orders (user_id);
+CREATE INDEX IF NOT EXISTS idx_orders_user ON orders (user_id);
 
-CREATE INDEX idx_orders_status ON orders (status);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (status);
 
-CREATE INDEX idx_orders_created ON orders (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_created ON orders (created_at DESC);
 
 CREATE TABLE IF NOT EXISTS order_items (
     order_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
@@ -367,9 +367,9 @@ CREATE TABLE IF NOT EXISTS order_items (
     unit_price DECIMAL(12, 2) NOT NULL CHECK (unit_price > 0)
 );
 
-CREATE INDEX idx_order_items_order ON order_items (order_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items (order_id);
 
-CREATE INDEX idx_order_items_product ON order_items (product_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_product ON order_items (product_id);
 
 -- Status transition audit
 CREATE TABLE IF NOT EXISTS order_status_history (
@@ -382,7 +382,7 @@ CREATE TABLE IF NOT EXISTS order_status_history (
     changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_order_history_order ON order_status_history (order_id);
+CREATE INDEX IF NOT EXISTS idx_order_history_order ON order_status_history (order_id);
 
 -- =============================================================
 -- AI SERVICE — view / purchase tracking
@@ -402,9 +402,9 @@ CREATE TABLE IF NOT EXISTS user_product_events (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_events_user ON user_product_events (user_id, event_type);
+CREATE INDEX IF NOT EXISTS idx_events_user ON user_product_events (user_id, event_type);
 
-CREATE INDEX idx_events_product ON user_product_events (product_id);
+CREATE INDEX IF NOT EXISTS idx_events_product ON user_product_events (product_id);
 
 -- =============================================================
 -- PINCODE MASTER (for delivery map)

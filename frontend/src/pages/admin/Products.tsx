@@ -101,7 +101,11 @@ export default function AdminProducts() {
     const toggleMutation = useMutation({
         mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
             productService.update(id, { is_active }),
-        onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'products'] }) },
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ['admin', 'products'] })
+            await qc.invalidateQueries({ queryKey: ['admin', 'low-stock'] })
+            await qc.invalidateQueries({ queryKey: ['admin', 'kpis'] })
+        },
     })
 
     const productFlagsMutation = useMutation({

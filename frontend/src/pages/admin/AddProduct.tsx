@@ -37,6 +37,8 @@ export default function AddProduct() {
         if (!form.selling_price || parseFloat(form.selling_price) <= 0) e.selling_price = 'Selling price must be > 0'
         if (parseFloat(form.selling_price) > parseFloat(form.mrp)) e.selling_price = 'Selling price must be ≤ MRP'
         if (form.category_ids.length === 0) e.category_ids = 'Select at least one category'
+        if (!images || images.length === 0) e.images = 'At least one product image is required'
+        if (!form.stock_quantity || parseInt(form.stock_quantity) < 1) e.stock_quantity = 'Stock must be at least 1 unit'
         setErrors(e)
         return Object.keys(e).length === 0
     }
@@ -130,8 +132,9 @@ export default function AddProduct() {
                             {errors.selling_price && <p className="text-red-500 text-xs mt-1">{errors.selling_price}</p>}
                         </div>
                         <div>
-                            <label className="label">Stock Quantity</label>
-                            <input type="number" min={0} className="input" value={form.stock_quantity} onChange={e => setForm(f => ({ ...f, stock_quantity: e.target.value }))} />
+                            <label className="label">Stock Quantity *</label>
+                            <input type="number" min={1} className="input" value={form.stock_quantity} onChange={e => setForm(f => ({ ...f, stock_quantity: e.target.value }))} />
+                            {errors.stock_quantity && <p className="text-red-500 text-xs mt-1">{errors.stock_quantity}</p>}
                         </div>
                     </div>
                 </div>
@@ -206,7 +209,8 @@ export default function AddProduct() {
 
                 {/* Images */}
                 <div className="card space-y-3">
-                    <h2 className="font-semibold text-surface-900 dark:text-white">Product Images (max 8, 5MB each)</h2>
+                    <h2 className="font-semibold text-surface-900 dark:text-white">Product Images * (max 8, 5MB each)</h2>
+                    {errors.images && <p className="text-red-500 text-xs">{errors.images}</p>}
                     <input
                         type="file"
                         accept="image/jpeg,image/png,image/webp"

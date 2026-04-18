@@ -153,6 +153,14 @@ function DealForm({
         payload.min_cart_value = normalizeOptionalNumber(payload.min_cart_value)
         payload.max_uses = normalizeOptionalNumber(payload.max_uses)
 
+        // Convert datetime-local strings (no timezone) to ISO UTC strings
+        if (payload.start_datetime) {
+            payload.start_datetime = new Date(payload.start_datetime).toISOString()
+        }
+        if (payload.end_datetime) {
+            payload.end_datetime = new Date(payload.end_datetime).toISOString()
+        }
+
         if (data.applies_to === 'specific_category' && selCats.length === 0) {
             toast.error('Select at least one category')
             return
@@ -402,13 +410,21 @@ export default function AdminDeals() {
     const createMutation = useMutation({
         mutationFn: (data: object) => productService.createDeal(data),
         onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'deals'] }); setShowCreate(false); toast.success('Deal created!') },
-        onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to create deal'),
+        onError: (err: any) => {
+            const detail = err.response?.data?.detail
+            const msg = Array.isArray(detail) ? detail[0]?.msg || 'Validation error' : detail || 'Failed to create deal'
+            toast.error(msg)
+        },
     })
 
     const updateMutation = useMutation({
         mutationFn: ({ id, data }: { id: string; data: object }) => productService.updateDeal(id, data),
         onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'deals'] }); setEditDeal(null); toast.success('Deal updated') },
-        onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update deal'),
+        onError: (err: any) => {
+            const detail = err.response?.data?.detail
+            const msg = Array.isArray(detail) ? detail[0]?.msg || 'Validation error' : detail || 'Failed to update deal'
+            toast.error(msg)
+        },
     })
 
     const toggleMutation = useMutation({

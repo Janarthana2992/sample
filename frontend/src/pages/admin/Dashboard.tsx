@@ -131,7 +131,7 @@ export default function AdminDashboard() {
                         {lowStockData && lowStockData.length > 0 ? (
                             <div className="space-y-2">
                                 {lowStockData.slice(0, 5).map((p: any) => (
-                                    <Link key={p.product_id} to={`/admin/products/${p.product_id}`} className="flex items-center gap-2 text-sm hover:bg-surface-50 dark:hover:bg-surface-800 rounded-lg p-1.5 transition-colors">
+                                    <Link key={p.product_id} to={`/admin/products/${p.product_id}/edit`} className="flex items-center gap-2 text-sm hover:bg-surface-50 dark:hover:bg-surface-800 rounded-lg p-1.5 transition-colors">
                                         {p.images?.[0]?.url ? (
                                             <img src={p.images[0].url} alt={p.name} className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
                                         ) : (
