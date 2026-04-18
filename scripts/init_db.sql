@@ -304,6 +304,10 @@ CREATE INDEX IF NOT EXISTS idx_addresses_user ON addresses (user_id);
 
 CREATE INDEX IF NOT EXISTS idx_addresses_pincode ON addresses (pincode);
 
+-- Ensure columns added after initial deploy exist (safe to re-run)
+ALTER TABLE addresses ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 7);
+ALTER TABLE addresses ADD COLUMN IF NOT EXISTS longitude DECIMAL(10, 7);
+
 -- =============================================================
 -- ORDERS
 -- =============================================================
@@ -370,6 +374,9 @@ CREATE TABLE IF NOT EXISTS order_items (
     quantity INTEGER NOT NULL CHECK (quantity > 0),
     unit_price DECIMAL(12, 2) NOT NULL CHECK (unit_price > 0)
 );
+
+-- Ensure columns added after initial deploy exist (safe to re-run)
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_name VARCHAR(200);
 
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items (order_id);
 
