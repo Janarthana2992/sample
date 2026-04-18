@@ -33,7 +33,10 @@ function DealForm({
     isSubmitting: boolean
     submitLabel: string
 }) {
-    const { register, handleSubmit, control, reset, setValue } = useForm({ defaultValues })
+    const { register, handleSubmit, control, reset, setValue } = useForm({
+        defaultValues: defaultValues ?? { deal_type: 'percentage', applies_to: 'all_products', is_active: true, staff_visible: false },
+    })
+    const dealType = useWatch({ control, name: 'deal_type' })
     const appliesTo = useWatch({ control, name: 'applies_to' })
     const startDt = useWatch({ control, name: 'start_datetime' })
     const endDt = useWatch({ control, name: 'end_datetime' })
@@ -43,8 +46,13 @@ function DealForm({
     // multi-select product_ids with search
     const [selProds, setSelProds] = useState<string[]>(defaultValues?.product_ids ?? [])
     const [prodSearch, setProdSearch] = useState('')
+    const [pendingPayload, setPendingPayload] = useState<any>(null)
 
     useEffect(() => { reset(defaultValues) }, [])
+    // Clear discount_value when switching to a type that has no value
+    useEffect(() => {
+        if (dealType === 'bogo' || dealType === 'free_shipping') setValue('discount_value', '')
+    }, [dealType, setValue])
 
     const filteredProds = products.filter(p =>
         !prodSearch || p.name.toLowerCase().includes(prodSearch.toLowerCase()) || p.sku.toLowerCase().includes(prodSearch.toLowerCase())
@@ -139,7 +147,9 @@ function DealForm({
 
     const submit = (data: any) => {
         const payload: any = { ...data }
-        payload.discount_value = normalizeOptionalNumber(payload.discount_value)
+        payload.discount_value = (data.deal_type === 'bogo' || data.deal_type === 'free_shipping')
+            ? undefined
+            : normalizeOptionalNumber(payload.discount_value)
         payload.min_cart_value = normalizeOptionalNumber(payload.min_cart_value)
         payload.max_uses = normalizeOptionalNumber(payload.max_uses)
 
@@ -154,6 +164,11 @@ function DealForm({
 
         if (data.applies_to === 'specific_category') payload.category_ids = selCats
         else if (data.applies_to === 'specific_skus') payload.product_ids = selProds
+
+        if (overlaps.length > 0) {
+            setPendingPayload(payload)
+            return
+        }
         onSubmit(payload)
     }
 
@@ -181,10 +196,36 @@ function DealForm({
                         <option value="specific_skus">Specific SKUs</option>
                     </select>
                 </div>
-                <div>
-                    <label className="label">Discount Value</label>
-                    <input type="number" step="0.01" className="input" {...register('discount_value')} />
-                </div>
+                {(dealType === 'bogo' || dealType === 'free_shipping') ? (
+                    <div className="flex items-center rounded-xl bg-surface-100 dark:bg-surface-800 p-3 text-sm text-surface-500 dark:text-surface-400">
+                        {dealType === 'bogo'
+                            ? '🛍️ BOGO — 50% off cart applied automatically'
+                            : '🚚 Free Shipping — no discount value needed'}
+                    </div>
+                ) : (
+                    <div>
+                        <label className="label">
+                            {dealType === 'percentage' ? 'Discount (%)' : 'Discount Amount (₹)'}
+                        </label>
+                        <div className="relative">
+                            {dealType !== 'percentage' && (
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm pointer-events-none">₹</span>
+                            )}
+                            <input
+                                type="number"
+                                step="0.01"
+                                min={0}
+                                max={dealType === 'percentage' ? 100 : undefined}
+                                className={`input${dealType !== 'percentage' ? ' pl-7' : ''}`}
+                                placeholder={dealType === 'percentage' ? 'e.g. 10' : 'e.g. 200'}
+                                {...register('discount_value')}
+                            />
+                            {dealType === 'percentage' && (
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm pointer-events-none">%</span>
+                            )}
+                        </div>
+                    </div>
+                )}
                 <div>
                     <label className="label">Start Date & Time</label>
                     <input type="datetime-local" className="input" {...register('start_datetime', { required: true })} />
@@ -276,29 +317,12 @@ function DealForm({
                 </label>
             </div>
 
-            {/* Overlap warning banner */}
             {overlaps.length > 0 && (
-                <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-2">
-                    <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-                        </svg>
-                        <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
-                            {overlaps.length} conflicting deal{overlaps.length > 1 ? 's' : ''} detected
-                        </p>
-                    </div>
-                    <p className="text-xs text-amber-700 dark:text-amber-400">
-                        The following active deals overlap with the same scope and time window. Multiple deals may stack or conflict at checkout:
-                    </p>
-                    <ul className="space-y-1">
-                        {overlaps.map((c, i) => (
-                            <li key={i} className="text-xs text-amber-800 dark:text-amber-300 flex items-start gap-1.5">
-                                <span className="shrink-0 mt-0.5 w-3.5 h-3.5 rounded-full bg-amber-200 dark:bg-amber-800 flex items-center justify-center text-[9px] font-bold">{i + 1}</span>
-                                <span><strong>{c.dealName}</strong> — {c.reason}</span>
-                            </li>
-                        ))}
-                    </ul>
-                    <p className="text-xs text-amber-600 dark:text-amber-500 font-medium">You can still save — review if this is intentional.</p>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-sm text-amber-800 dark:text-amber-300">
+                    <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                    </svg>
+                    <span>{overlaps.length} overlapping deal{overlaps.length > 1 ? 's' : ''} — you'll be asked to confirm before saving</span>
                 </div>
             )}
 
@@ -308,6 +332,38 @@ function DealForm({
                     {isSubmitting ? 'Saving...' : submitLabel}
                 </button>
             </div>
+
+            {/* Conflict confirmation modal */}
+            {pendingPayload && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-surface-900 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
+                        <div className="flex items-center gap-3">
+                            <span className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
+                                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                                </svg>
+                            </span>
+                            <div>
+                                <h3 className="font-semibold text-surface-900 dark:text-white">Overlapping deals detected</h3>
+                                <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">{overlaps.length} deal{overlaps.length > 1 ? 's' : ''} overlap with this one</p>
+                            </div>
+                        </div>
+                        <ul className="space-y-1">
+                            {overlaps.map((c, i) => (
+                                <li key={i} className="text-xs text-amber-800 dark:text-amber-300 flex items-start gap-1.5">
+                                    <span className="shrink-0 mt-0.5 w-3.5 h-3.5 rounded-full bg-amber-200 dark:bg-amber-800 flex items-center justify-center text-[9px] font-bold">{i + 1}</span>
+                                    <span><strong>{c.dealName}</strong> — {c.reason}</span>
+                                </li>
+                            ))}
+                        </ul>
+                        <p className="text-sm text-surface-600 dark:text-surface-400">Multiple active deals may stack at checkout. Save anyway?</p>
+                        <div className="flex gap-3">
+                            <button type="button" onClick={() => setPendingPayload(null)} className="btn-secondary flex-1">Cancel</button>
+                            <button type="button" onClick={() => { onSubmit(pendingPayload); setPendingPayload(null) }} className="btn-primary flex-1">Save Anyway</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </form>
     )
 }

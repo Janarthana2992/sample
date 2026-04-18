@@ -260,12 +260,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      args:
-        VITE_AUTH_SERVICE_URL: ${VITE_AUTH_SERVICE_URL:-/api/auth}
-        VITE_PRODUCT_SERVICE_URL: ${VITE_PRODUCT_SERVICE_URL:-/api/products}
-        VITE_CART_SERVICE_URL: ${VITE_CART_SERVICE_URL:-/api/cart}
-        VITE_ORDER_SERVICE_URL: ${VITE_ORDER_SERVICE_URL:-/api/orders}
-        VITE_AI_SERVICE_URL: ${VITE_AI_SERVICE_URL:-/api/ai}
+      # No VITE_* build args needed — the app uses relative /api/* paths by default.
+      # Override only if you need to point at a different host (e.g. external API server).
+      # args:
+      #   VITE_AUTH_SERVICE_URL: https://api.example.com/auth
     container_name: ecom_frontend
     restart: unless-stopped
     ports:

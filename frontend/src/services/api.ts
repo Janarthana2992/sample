@@ -1,11 +1,14 @@
 import axios from 'axios'
 import { useAuthStore } from '../store/authStore'
 
-const AUTH_URL = import.meta.env.VITE_AUTH_SERVICE_URL || 'http://localhost:8001'
-const PRODUCT_URL = import.meta.env.VITE_PRODUCT_SERVICE_URL || 'http://localhost:8002'
-const CART_URL = import.meta.env.VITE_CART_SERVICE_URL || 'http://localhost:8003'
-const ORDER_URL = import.meta.env.VITE_ORDER_SERVICE_URL || 'http://localhost:8004'
-const AI_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8005'
+// In production (Docker/any server), Nginx proxies /api/* to the correct service.
+// In local dev (npm run dev), Vite's proxy (vite.config.ts) handles /api/* — no hardcoded host needed.
+// VITE_* env vars are only read as an escape hatch (e.g. pointing at a remote dev server).
+const AUTH_URL = import.meta.env.VITE_AUTH_SERVICE_URL || '/api/auth'
+const PRODUCT_URL = import.meta.env.VITE_PRODUCT_SERVICE_URL || '/api/products'
+const CART_URL = import.meta.env.VITE_CART_SERVICE_URL || '/api/cart'
+const ORDER_URL = import.meta.env.VITE_ORDER_SERVICE_URL || '/api/orders'
+const AI_URL = import.meta.env.VITE_AI_SERVICE_URL || '/api/ai'
 
 function createClient(baseURL: string) {
     const client = axios.create({ baseURL })

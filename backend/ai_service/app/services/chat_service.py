@@ -36,47 +36,144 @@ async def _llm_chat_completion(
 ) -> dict:
     """Use Gemini for chat completion."""
     import google.generativeai as genai
+    import google.ai.generativelanguage as glm
 
-    # Convert OpenAI-style messages to Gemini format
-    gemini_history = []
     system_parts = []
-    last_user_text = ""
-    for msg in messages:
+    gemini_turns = []  # list of {"role": ..., "parts": [...]}
+
+    i = 0
+    while i < len(messages):
+        msg = messages[i]
         role = msg.get("role", "user")
         content = msg.get("content") or ""
+
         if role == "system":
             system_parts.append(content)
-        elif role == "user":
-            last_user_text = content
-            if gemini_history or system_parts:
-                gemini_history.append({"role": "user", "parts": [content]})
-        elif role == "assistant":
-            gemini_history.append({"role": "model", "parts": [content]})
+            i += 1
 
-    # If there's history rebuild model with system instruction
+        elif role == "user":
+            gemini_turns.append({"role": "user", "parts": [content]})
+            i += 1
+
+        elif role == "assistant":
+            tc_list = msg.get("tool_calls")
+            if tc_list:
+                # Convert tool_calls to Gemini function_call parts
+                parts = []
+                tc_id_to_name: dict = {}
+                for tc in tc_list:
+                    fn = tc["function"]
+                    args = fn.get("arguments", {})
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except Exception:
+                            args = {}
+                    tc_id_to_name[tc["id"]] = fn["name"]
+                    parts.append(glm.Part(function_call=glm.FunctionCall(
+                        name=fn["name"],
+                        args=args,
+                    )))
+                gemini_turns.append({"role": "model", "parts": parts})
+                i += 1
+                # Collect consecutive tool result messages and group into one user turn
+                tool_parts = []
+                while i < len(messages) and messages[i].get("role") == "tool":
+                    t = messages[i]
+                    fn_name = tc_id_to_name.get(t.get("tool_call_id", ""), "unknown")
+                    try:
+                        result = json.loads(t.get("content") or "{}")
+                    except Exception:
+                        result = {"result": t.get("content", "")}
+                    tool_parts.append(glm.Part(function_response=glm.FunctionResponse(
+                        name=fn_name,
+                        response=result,
+                    )))
+                    i += 1
+                if tool_parts:
+                    gemini_turns.append({"role": "user", "parts": tool_parts})
+            else:
+                gemini_turns.append({"role": "model", "parts": [content or " "]})
+                i += 1
+
+        else:
+            i += 1
+
+    if not gemini_turns:
+        gemini_turns.append({"role": "user", "parts": ["Hello"]})
+
+    history = gemini_turns[:-1]
+    last_parts = gemini_turns[-1]["parts"]
     system_text = "\n".join(system_parts) if system_parts else None
+
+    # Convert OpenAI-style tools to Gemini format
+    gemini_tools = None
+    if tools and tool_choice != "none":
+        function_declarations = []
+        for tool in tools:
+            fn = tool["function"]
+            function_declarations.append(genai.types.FunctionDeclaration(
+                name=fn["name"],
+                description=fn.get("description", ""),
+                parameters=fn.get("parameters"),
+            ))
+        gemini_tools = [genai.types.Tool(function_declarations=function_declarations)]
+
+    tool_config = None
+    if tool_choice == "none":
+        tool_config = genai.types.ToolConfig(
+            function_calling_config=genai.types.FunctionCallingConfig(mode="NONE")
+        )
+
     model = genai.GenerativeModel(
         settings.GEMINI_MODEL,
         system_instruction=system_text,
+        tools=gemini_tools,
+        tool_config=tool_config,
     )
-
     gen_config = genai.types.GenerationConfig(
         temperature=temperature,
         max_output_tokens=max_tokens,
     )
 
-    # Build history without the last user message
-    history = gemini_history[:-1] if gemini_history and gemini_history[-1]["role"] == "user" else gemini_history
-    prompt = last_user_text or (messages[-1].get("content") if messages else "")
+    chat_session = model.start_chat(history=history)
+    response = await chat_session.send_message_async(last_parts, generation_config=gen_config)
 
-    chat = model.start_chat(history=history)
-    response = await chat.send_message_async(prompt, generation_config=gen_config)
+    # Parse response — check for function calls and/or text
+    result_msg: dict = {"role": "assistant", "content": ""}
+    try:
+        candidate = response.candidates[0] if response.candidates else None
+        if candidate and candidate.content:
+            tool_calls_out = []
+            text_parts = []
+            for part in (candidate.content.parts or []):
+                fn_call = getattr(part, "function_call", None)
+                if fn_call and getattr(fn_call, "name", None):
+                    args = dict(fn_call.args) if fn_call.args else {}
+                    tool_calls_out.append({
+                        "id": f"call_{uuid.uuid4().hex[:24]}",
+                        "type": "function",
+                        "function": {
+                            "name": fn_call.name,
+                            "arguments": json.dumps(args),
+                        },
+                    })
+                else:
+                    text = getattr(part, "text", None)
+                    if text:
+                        text_parts.append(text)
+            if tool_calls_out:
+                result_msg["tool_calls"] = tool_calls_out
+            result_msg["content"] = "".join(text_parts)
+        else:
+            result_msg["content"] = response.text or ""
+    except Exception:
+        try:
+            result_msg["content"] = response.text or ""
+        except Exception:
+            result_msg["content"] = ""
 
-    return {
-        "role": "assistant",
-        "content": response.text,
-        "tool_calls": None,
-    }
+    return {"choices": [{"message": result_msg}]}
 
 
 def _openai_response_to_dict(resp) -> dict:
