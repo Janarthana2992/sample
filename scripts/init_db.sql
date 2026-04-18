@@ -358,6 +358,10 @@ CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (status);
 
 CREATE INDEX IF NOT EXISTS idx_orders_created ON orders (created_at DESC);
 
+-- Ensure columns added after initial deploy exist (safe to re-run)
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS return_reason TEXT;
+
 CREATE TABLE IF NOT EXISTS order_items (
     order_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     order_id UUID NOT NULL REFERENCES orders (order_id) ON DELETE CASCADE,
