@@ -46,7 +46,7 @@
     }
 
     .btn-secondary {
-        @apply inline-flex items-center justify-center gap-2 bg-white hover:bg-gray-50 active:bg-gray-100 text-gray-700 font-semibold py-2.5 px-5 rounded-xl transition-all duration-200 border border-gray-200 hover:border-gray-300 shadow-sm dark:bg-gray-800 dark:hover:bg-gray-750 dark:text-gray-200 dark:border-gray-700 dark:hover:border-gray-600 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2;
+        @apply inline-flex items-center justify-center gap-2 bg-white hover:bg-gray-50 active:bg-gray-100 text-gray-700 font-semibold py-2.5 px-5 rounded-xl transition-all duration-200 border border-gray-200 hover:border-gray-300 shadow-sm dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 dark:border-gray-700 dark:hover:border-gray-600 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2;
     }
 
     .btn-danger {
