@@ -186,9 +186,9 @@ CREATE TABLE IF NOT EXISTS deals (
     name VARCHAR(200) NOT NULL,
     deal_type VARCHAR(30) NOT NULL CHECK (
         deal_type IN (
-            'percentage_discount',
-            'fixed_amount_off',
-            'buy_x_get_y',
+            'percentage',
+            'flat',
+            'bogo',
             'free_shipping'
         )
     ),
@@ -319,7 +319,9 @@ CREATE TABLE IF NOT EXISTS orders (
             'confirmed',
             'dispatched',
             'delivered',
-            'cancelled'
+            'cancelled',
+            'return_requested',
+            'returned'
         )
     ),
     shipping_address_id UUID REFERENCES addresses (address_id),
@@ -344,6 +346,8 @@ CREATE TABLE IF NOT EXISTS orders (
     razorpay_payment_id VARCHAR(100),
     razorpay_signature VARCHAR(255),
     estimated_delivery DATE,
+    cancel_reason TEXT,
+    return_reason TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ
 );
@@ -358,6 +362,7 @@ CREATE TABLE IF NOT EXISTS order_items (
     order_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     order_id UUID NOT NULL REFERENCES orders (order_id) ON DELETE CASCADE,
     product_id UUID NOT NULL REFERENCES products (product_id),
+    product_name VARCHAR(200),
     quantity INTEGER NOT NULL CHECK (quantity > 0),
     unit_price DECIMAL(12, 2) NOT NULL CHECK (unit_price > 0)
 );
