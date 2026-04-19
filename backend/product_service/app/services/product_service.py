@@ -506,3 +506,48 @@ async def soft_delete_product(db: AsyncSession, product_id: uuid.UUID):
         product.updated_at = datetime.now(timezone.utc)
         await db.commit()
         await _publish_delete_event(str(product_id))
+
+
+async def add_product_images(db: AsyncSession, product_id: uuid.UUID, images: list) -> Product:
+    """Add images to an existing product (max 8 total)."""
+    product = await get_product(db, product_id)
+    current_count = len(product.images)
+    if current_count + len(images) > MAX_IMAGES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Cannot add {len(images)} images: would exceed {MAX_IMAGES} total (currently {current_count})",
+        )
+    next_order = current_count
+    for img_file in images:
+        url = await _save_image(img_file, product_id)
+        db.add(ProductImage(product_id=product_id, url=url, sort_order=next_order))
+        next_order += 1
+    await db.commit()
+    await db.refresh(product, ["images", "product_categories"])
+    return product
+
+
+async def delete_product_image(db: AsyncSession, product_id: uuid.UUID, image_id: uuid.UUID):
+    """Delete a single image from a product. Keeps at least 0 images."""
+    result = await db.execute(
+        select(ProductImage).where(
+            ProductImage.image_id == image_id,
+            ProductImage.product_id == product_id,
+        )
+    )
+    image = result.scalar_one_or_none()
+    if not image:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+    # Remove file from disk (best-effort)
+    try:
+        import re
+        path_match = re.search(r"/static/products/(.+)", image.url)
+        if path_match:
+            file_path = os.path.join(settings.UPLOAD_DIR, path_match.group(1))
+            if os.path.exists(file_path):
+                os.remove(file_path)
+    except Exception:
+        pass
+    await db.delete(image)
+    await db.commit()
+

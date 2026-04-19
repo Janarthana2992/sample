@@ -147,7 +147,30 @@ async def delete_product(
     await product_service.soft_delete_product(db, product_id)
 
 
-# ── Bulk Export ─────────────────────────────────────────────
+# ── Image Management ─────────────────────────────────────────
+
+@router.post("/{product_id}/images", response_model=ProductOut)
+async def add_product_images(
+    product_id: uuid.UUID,
+    images: List[UploadFile] = File(...),
+    _=Depends(require_roles("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add one or more images to an existing product."""
+    return await product_service.add_product_images(db, product_id, images)
+
+
+@router.delete("/{product_id}/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_product_image(
+    product_id: uuid.UUID,
+    image_id: uuid.UUID,
+    _=Depends(require_roles("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a single image from a product."""
+    await product_service.delete_product_image(db, product_id, image_id)
+
+
 
 @router.get("/export/csv")
 async def export_products_csv(

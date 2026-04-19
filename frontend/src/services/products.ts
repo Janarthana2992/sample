@@ -26,6 +26,15 @@ export const productService = {
 
     delete: (id: string) => productClient.delete(`/products/${id}`),
 
+    addImages: (id: string, files: File[]) => {
+        const fd = new FormData()
+        files.forEach(f => fd.append('images', f))
+        return productClient.post<import('../types').Product>(`/products/${id}/images`, fd).then(r => r.data)
+    },
+
+    deleteImage: (productId: string, imageId: string) =>
+        productClient.delete(`/products/${productId}/images/${imageId}`),
+
     // Bulk import / export
     exportProductsCsv: () =>
         productClient.get('/products/export/csv', { responseType: 'blob' }).then(r => r.data),

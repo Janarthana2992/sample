@@ -389,15 +389,14 @@ async def top_products(
     result = await db.execute(
         text("""
         SELECT oi.product_id,
-               p.name            AS product_name,
-               SUM(oi.quantity)  AS units_sold,
+               MAX(oi.product_name) AS product_name,
+               SUM(oi.quantity)     AS units_sold,
                SUM(oi.quantity * oi.unit_price) AS revenue
         FROM order_items oi
         JOIN orders o ON o.order_id = oi.order_id
-        LEFT JOIN products p ON p.product_id = oi.product_id
         WHERE o.created_at >= CURRENT_DATE - CAST(:interval AS INTERVAL)
           AND o.status != 'cancelled'
-        GROUP BY oi.product_id, p.name
+        GROUP BY oi.product_id
         ORDER BY units_sold DESC
         LIMIT 10
         """),
@@ -405,6 +404,40 @@ async def top_products(
     )
     rows = result.fetchall()
     return [{"product_id": str(r.product_id), "product_name": r.product_name or str(r.product_id)[:8], "units_sold": r.units_sold, "revenue": float(r.revenue)} for r in rows]
+
+
+@router.get("/internal/co-purchased/{product_id}", tags=["internal"])
+async def co_purchased_products(
+    product_id: uuid.UUID,
+    top_n: int = Query(default=5, ge=1, le=20),
+    token: str = Query(..., alias="token"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Internal: returns products most frequently bought together with the given product."""
+    from app.config import settings as s
+    if token != s.INTERNAL_SERVICE_TOKEN:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    from sqlalchemy import text
+    result = await db.execute(
+        text("""
+        SELECT other.product_id,
+               MAX(other.product_name) AS product_name,
+               COUNT(*) AS freq
+        FROM order_items base
+        JOIN order_items other
+          ON other.order_id = base.order_id
+         AND other.product_id != base.product_id
+        JOIN orders o ON o.order_id = base.order_id
+        WHERE base.product_id = :product_id
+          AND o.status != 'cancelled'
+        GROUP BY other.product_id
+        ORDER BY freq DESC
+        LIMIT :top_n
+        """),
+        {"product_id": str(product_id), "top_n": top_n},
+    )
+    rows = result.fetchall()
+    return [{"product_id": str(r.product_id), "product_name": r.product_name, "freq": r.freq} for r in rows]
 
 
 @router.get("/admin/dashboard/pincode-map", tags=["admin"])

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -10,33 +10,33 @@ import type { Order } from '../../types'
 type ColSort = 'date_desc' | 'date_asc' | 'price_desc' | 'price_asc'
 
 const STATUSES = [
-    { key: 'pending',          label: 'Pending',          color: 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800' },
-    { key: 'confirmed',        label: 'Confirmed',        color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' },
-    { key: 'dispatched',       label: 'Dispatched',       color: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800' },
-    { key: 'delivered',        label: 'Delivered',        color: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' },
-    { key: 'cancelled',        label: 'Cancelled',        color: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' },
+    { key: 'pending', label: 'Pending', color: 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800' },
+    { key: 'confirmed', label: 'Confirmed', color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' },
+    { key: 'dispatched', label: 'Dispatched', color: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800' },
+    { key: 'delivered', label: 'Delivered', color: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' },
+    { key: 'cancelled', label: 'Cancelled', color: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' },
     { key: 'return_requested', label: 'Return Requested', color: 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800' },
-    { key: 'returned',         label: 'Returned',         color: 'bg-surface-50 dark:bg-surface-800 border-surface-200 dark:border-surface-700' },
+    { key: 'returned', label: 'Returned', color: 'bg-surface-50 dark:bg-surface-800 border-surface-200 dark:border-surface-700' },
 ]
 
 const STATUS_BADGE: Record<string, string> = {
-    pending:          'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
-    confirmed:        'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-    dispatched:       'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
-    delivered:        'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-    cancelled:        'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
+    pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
+    confirmed: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
+    dispatched: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
+    delivered: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+    cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
     return_requested: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
-    returned:         'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-300',
+    returned: 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-300',
 }
 
 const NEXT_STATUSES: Record<string, string[]> = {
-    pending:          ['confirmed', 'cancelled'],
-    confirmed:        ['dispatched', 'cancelled'],
-    dispatched:       ['delivered'],
-    delivered:        [],
-    cancelled:        [],
+    pending: ['confirmed', 'cancelled'],
+    confirmed: ['dispatched', 'cancelled'],
+    dispatched: ['delivered'],
+    delivered: [],
+    cancelled: [],
     return_requested: ['returned', 'delivered'],
-    returned:         [],
+    returned: [],
 }
 
 const CARDS_PER_PAGE = 20
@@ -44,9 +44,9 @@ const CARDS_PER_PAGE = 20
 function sortOrders(orders: Order[], sort: ColSort): Order[] {
     return [...orders].sort((a, b) => {
         if (sort === 'date_desc') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        if (sort === 'date_asc')  return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        if (sort === 'date_asc') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         if (sort === 'price_desc') return Number(b.total_price) - Number(a.total_price)
-        if (sort === 'price_asc')  return Number(a.total_price) - Number(b.total_price)
+        if (sort === 'price_asc') return Number(a.total_price) - Number(b.total_price)
         return 0
     })
 }
@@ -61,6 +61,10 @@ function KanbanColumn({
     searchActive,
     onUpdateStatus,
     isPending,
+    draggedOrder,
+    onDrop,
+    setDraggedOrderRef,
+    clearDraggedOrder,
 }: {
     status: string
     label: string
@@ -70,19 +74,57 @@ function KanbanColumn({
     searchActive: boolean
     onUpdateStatus: (orderId: string, newStatus: string) => void
     isPending: boolean
+    draggedOrder: Order | null
+    onDrop: (targetStatus: string) => void
+    setDraggedOrderRef: (order: Order) => void
+    clearDraggedOrder: () => void
 }) {
     const [colSort, setColSort] = useState<ColSort>('date_desc')
     const [showAll, setShowAll] = useState(false)
+    const [isDragOver, setIsDragOver] = useState(false)
 
     const sorted = sortOrders(orders, colSort)
     const displayed = showAll ? sorted : sorted.slice(0, CARDS_PER_PAGE)
     const hasMore = sorted.length > CARDS_PER_PAGE
     const isEmpty = orders.length === 0
 
+    // A drop is valid if the dragged order lists this column as a next valid status
+    const canDrop = draggedOrder != null &&
+        draggedOrder.status !== status &&
+        (NEXT_STATUSES[draggedOrder.status] ?? []).includes(status)
+
+    const handleDragOver = (e: React.DragEvent) => {
+        if (canDrop) {
+            e.preventDefault()
+            setIsDragOver(true)
+        }
+    }
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        // Only clear when leaving the column itself, not its children
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            setIsDragOver(false)
+        }
+    }
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault()
+        setIsDragOver(false)
+        if (canDrop) onDrop(status)
+    }
+
+    let dropRingClass = ''
+    if (isDragOver && canDrop) dropRingClass = 'ring-2 ring-green-400 dark:ring-green-500'
+    else if (draggedOrder && canDrop) dropRingClass = 'ring-1 ring-dashed ring-green-400/60 dark:ring-green-500/60'
+    else if (draggedOrder && !canDrop && draggedOrder.status !== status) dropRingClass = 'opacity-50'
+
     return (
         <div
-            className={`flex flex-col rounded-2xl border ${colorClass} transition-opacity ${searchActive && isEmpty ? 'opacity-40' : 'opacity-100'}`}
+            className={`flex flex-col rounded-2xl border ${colorClass} transition-all ${searchActive && isEmpty ? 'opacity-40' : ''} ${dropRingClass}`}
             style={{ minWidth: 280, width: 300, flexShrink: 0 }}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
         >
             <div className="p-3 border-b border-inherit">
                 <div className="flex items-center justify-between mb-2">
@@ -102,6 +144,19 @@ function KanbanColumn({
                     <option value="price_asc">Price: low → high</option>
                 </select>
             </div>
+
+            {/* Drop hint */}
+            {isDragOver && canDrop && (
+                <div className="mx-2 mt-2 rounded-xl border-2 border-dashed border-green-400 dark:border-green-500 bg-green-50 dark:bg-green-900/20 flex items-center justify-center py-3 text-xs font-medium text-green-700 dark:text-green-300">
+                    Drop to move → {label}
+                </div>
+            )}
+            {draggedOrder && canDrop && !isDragOver && (
+                <div className="mx-2 mt-2 rounded-xl border border-dashed border-green-400/50 dark:border-green-500/50 flex items-center justify-center py-2 text-[11px] text-green-600 dark:text-green-400">
+                    Drop here
+                </div>
+            )}
+
             <div className="flex flex-col gap-2 p-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 320px)' }}>
                 {displayed.map(order => (
                     <OrderCard
@@ -110,6 +165,9 @@ function KanbanColumn({
                         highlight={searchActive}
                         onUpdateStatus={onUpdateStatus}
                         isPending={isPending}
+                        isDragging={draggedOrder?.order_id === order.order_id}
+                        onDragStart={setDraggedOrderRef}
+                        onDragEnd={clearDraggedOrder}
                     />
                 ))}
                 {isEmpty && searchActive && <p className="text-xs text-center text-surface-400 py-6">No matches</p>}
@@ -135,17 +193,36 @@ function OrderCard({
     highlight,
     onUpdateStatus,
     isPending,
+    isDragging,
+    onDragStart,
+    onDragEnd,
 }: {
     order: Order
     highlight: boolean
     onUpdateStatus: (orderId: string, newStatus: string) => void
     isPending: boolean
+    isDragging?: boolean
+    onDragStart?: (order: Order) => void
+    onDragEnd?: () => void
 }) {
     const nextStatuses = NEXT_STATUSES[order.status] ?? []
     const shortId = order.order_id.slice(0, 8).toUpperCase()
 
     return (
-        <div className={`bg-white dark:bg-surface-900 rounded-xl p-3 shadow-sm border transition-all ${highlight ? 'border-blue-400 dark:border-blue-500 ring-1 ring-blue-300 dark:ring-blue-600' : 'border-surface-100 dark:border-surface-700'}`}>
+        <div
+            draggable={nextStatuses.length > 0}
+            onDragStart={e => {
+                e.dataTransfer.effectAllowed = 'move'
+                e.dataTransfer.setData('text/plain', order.order_id)
+                onDragStart?.(order)
+            }}
+            onDragEnd={() => onDragEnd?.()}
+            className={`bg-white dark:bg-surface-900 rounded-xl p-3 shadow-sm border transition-all select-none
+                ${highlight ? 'border-blue-400 dark:border-blue-500 ring-1 ring-blue-300 dark:ring-blue-600' : 'border-surface-100 dark:border-surface-700'}
+                ${isDragging ? 'opacity-40 scale-95' : ''}
+                ${nextStatuses.length > 0 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}
+            `}
+        >
             <div className="flex items-start justify-between gap-2 mb-2">
                 <Link to={`/admin/orders/${order.order_id}`} className="text-xs font-mono font-semibold text-primary-600 dark:text-primary-400 hover:underline">
                     #{shortId}
@@ -193,6 +270,9 @@ export default function AdminOrders() {
     const qc = useQueryClient()
     const [search, setSearch] = useState('')
     const searchRef = useRef<HTMLInputElement>(null)
+    const [draggedOrder, setDraggedOrder] = useState<Order | null>(null)
+    const setDraggedOrderRef = useCallback((o: Order) => setDraggedOrder(o), [])
+    const clearDraggedOrder = useCallback(() => setDraggedOrder(null), [])
 
     const { data, isLoading } = useQuery({
         queryKey: ['admin', 'orders'],
@@ -208,6 +288,12 @@ export default function AdminOrders() {
         },
         onError: (err: any) => toast.error(err.response?.data?.detail || 'Update failed'),
     })
+
+    const handleDrop = useCallback((targetStatus: string) => {
+        if (!draggedOrder) return
+        updateStatusMutation.mutate({ orderId: draggedOrder.order_id, status: targetStatus })
+        setDraggedOrder(null)
+    }, [draggedOrder, updateStatusMutation])
 
     if (isLoading) return <LoadingSpinner />
 
@@ -233,7 +319,14 @@ export default function AdminOrders() {
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between gap-4 flex-wrap">
-                <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Orders Pipeline</h1>
+                <div className="flex items-center gap-3">
+                    <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Orders Pipeline</h1>
+                    {draggedOrder && (
+                        <span className="text-xs px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 animate-pulse">
+                            Dragging #{draggedOrder.order_id.slice(0, 8).toUpperCase()}
+                        </span>
+                    )}
+                </div>
                 <div className="relative w-72">
                     <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 104.5 12a7.5 7.5 0 0012.15 4.65z" />
@@ -248,6 +341,12 @@ export default function AdminOrders() {
                     />
                 </div>
             </div>
+
+            {!draggedOrder && (
+                <p className="text-xs text-surface-400 dark:text-surface-500">
+                    Drag cards between columns to update status, or use the quick-action buttons on each card.
+                </p>
+            )}
 
             {noResults && (
                 <div className="rounded-xl border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
@@ -269,6 +368,10 @@ export default function AdminOrders() {
                             searchActive={searchActive}
                             onUpdateStatus={(orderId, status) => updateStatusMutation.mutate({ orderId, status })}
                             isPending={updateStatusMutation.isPending}
+                            draggedOrder={draggedOrder}
+                            onDrop={handleDrop}
+                            setDraggedOrderRef={setDraggedOrderRef}
+                            clearDraggedOrder={clearDraggedOrder}
                         />
                     )
                 })}

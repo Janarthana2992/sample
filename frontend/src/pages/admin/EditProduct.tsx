@@ -110,6 +110,24 @@ export default function EditProduct() {
         onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update product'),
     })
 
+    const addImagesMutation = useMutation({
+        mutationFn: (files: File[]) => productService.addImages(id!, files),
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ['product', id] })
+            toast.success('Images added!')
+        },
+        onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to upload images'),
+    })
+
+    const deleteImageMutation = useMutation({
+        mutationFn: (imageId: string) => productService.deleteImage(id!, imageId),
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ['product', id] })
+            toast.success('Image removed')
+        },
+        onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to remove image'),
+    })
+
     const validate = () => {
         const e: Record<string, string> = {}
         if (!form.name || form.name.length < 3) e.name = 'Name must be ≥ 3 chars'
@@ -290,18 +308,55 @@ export default function EditProduct() {
                         </div>
                     </div>
 
-                    {/* Current Images (read-only display) */}
-                    {product.images.length > 0 && (
-                        <div className="card space-y-3">
-                            <h2 className="font-semibold text-surface-900 dark:text-white">Current Images</h2>
+                    {/* Image Management */}
+                    <div className="card space-y-3">
+                        <div className="flex items-center justify-between">
+                            <h2 className="font-semibold text-surface-900 dark:text-white">
+                                Product Images
+                                <span className="ml-2 text-xs text-surface-400 font-normal">({product.images.length}/8)</span>
+                            </h2>
+                        </div>
+                        {product.images.length > 0 && (
                             <div className="flex gap-2 flex-wrap">
                                 {product.images.map(img => (
-                                    <img key={img.image_id} src={img.url} alt="" className="w-20 h-20 rounded-lg object-cover border border-surface-200 dark:border-surface-700" />
+                                    <div key={img.image_id} className="relative group">
+                                        <img src={img.url} alt="" className="w-20 h-20 rounded-lg object-cover border border-surface-200 dark:border-surface-700" />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (window.confirm('Remove this image?')) {
+                                                    deleteImageMutation.mutate(img.image_id)
+                                                }
+                                            }}
+                                            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
                                 ))}
                             </div>
-                            <p className="text-xs text-surface-400">Image management (add/remove) coming soon.</p>
-                        </div>
-                    )}
+                        )}
+                        {product.images.length < 8 && (
+                            <div>
+                                <label className="label">Add Images (max {8 - product.images.length} more)</label>
+                                <input
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp"
+                                    multiple
+                                    onChange={e => {
+                                        const files = e.target.files
+                                        if (!files || files.length === 0) return
+                                        addImagesMutation.mutate(Array.from(files))
+                                        e.target.value = ''
+                                    }}
+                                    disabled={addImagesMutation.isPending}
+                                    className="block w-full text-sm text-surface-500 dark:text-surface-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                                />
+                                {addImagesMutation.isPending && <p className="text-xs text-primary-600 mt-1">Uploading…</p>}
+                            </div>
+                        )}
+                        {product.images.length === 0 && <p className="text-xs text-surface-400">No images yet. Add images above.</p>}
+                    </div>
 
                     {/* Active toggle */}
                     <div className="card">

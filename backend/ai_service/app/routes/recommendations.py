@@ -191,15 +191,17 @@ async def user_recommendations(
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(
                 f"{settings.ORDER_SERVICE_URL}/orders",
-                params={"user_id": str(user_id), "status": "delivered", "size": 20},
+                params={"user_id": str(user_id), "size": 50},
                 headers={"Authorization": f"Bearer {current_user['_token']}"},
             )
             if r.status_code != 200:
                 raise Exception("Could not fetch orders")
             orders = r.json().get("items", [])
 
+        # Include all non-cancelled orders so recommendations update immediately after purchase
+        active_orders = [o for o in orders if o.get("status") not in ("cancelled",)]
         purchased_ids: list[str] = []
-        for order in orders:
+        for order in active_orders:
             for item in order.get("items", []):
                 pid = item.get("product_id")
                 if pid and pid not in purchased_ids:
@@ -393,14 +395,50 @@ async def frequently_bought_together(
 ):
     """
     Find products frequently bought with this product.
-    Queries order_items to find co-purchased products, ranked by frequency.
+    Queries order service for actual co-purchase data; falls back to FAISS similarity.
     """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # Use a raw SQL approach via order service — but since we don't have direct DB access here,
-            # we'll use FAISS similar products as a proxy, filtered by purchase co-occurrence signals
-            # For now, leverage get_similar which uses semantic similarity
-            results = await get_similar(str(product_id), top_n)
+            # Try real co-purchase data from order service
+            co_purchase_items: list[dict] = []
+            try:
+                r = await client.get(
+                    f"{settings.ORDER_SERVICE_URL}/internal/co-purchased/{product_id}",
+                    params={"token": settings.INTERNAL_SERVICE_TOKEN, "top_n": top_n},
+                )
+                if r.status_code == 200:
+                    co_purchase_items = r.json()
+            except Exception:
+                pass
+
+            if co_purchase_items:
+                # Use actual co-purchase rankings
+                items = []
+                for row in co_purchase_items:
+                    pid = row["product_id"]
+                    try:
+                        pr = await client.get(f"{settings.PRODUCT_SERVICE_URL}/products/{pid}")
+                        if pr.status_code == 200:
+                            p = pr.json()
+                            images = p.get("images") or []
+                            image_url = images[0]["url"] if images else None
+                            items.append(RecommendationItem(
+                                product_id=uuid.UUID(pid),
+                                score=float(row["freq"]),
+                                name=p.get("name"),
+                                mrp=p.get("mrp"),
+                                selling_price=p.get("selling_price"),
+                                image_url=image_url,
+                                stock_status=p.get("stock_status"),
+                            ))
+                    except Exception:
+                        pass
+                if items:
+                    return RecommendationResponse(items=items)
+
+            # Fallback: FAISS semantic similarity (exclude current product)
+            results = await get_similar(str(product_id), top_n + 1)
+            results = [r for r in results if r["product_id"] != str(product_id)][:top_n]
             if not results:
                 return RecommendationResponse(items=[])
 
@@ -432,6 +470,7 @@ async def frequently_bought_together(
         return RecommendationResponse(items=[])
 
 
+
 # ── Category-based Recommendations ───────────────────────────
 
 @router.get("/recommend/category-picks/{user_id}", response_model=RecommendationResponse)
@@ -449,10 +488,10 @@ async def category_picks(
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # Fetch user's delivered orders
+            # Fetch user's orders (all non-cancelled so recommendations update immediately after purchase)
             r = await client.get(
                 f"{settings.ORDER_SERVICE_URL}/orders",
-                params={"user_id": str(user_id), "status": "delivered", "size": 50},
+                params={"user_id": str(user_id), "size": 50},
                 headers={"Authorization": f"Bearer {current_user['_token']}"},
             )
             if r.status_code != 200:
@@ -460,7 +499,7 @@ async def category_picks(
 
             orders = r.json().get("items", [])
             product_ids = []
-            for order in orders:
+            for order in [o for o in orders if o.get("status") not in ("cancelled",)]:
                 for item in order.get("items", []):
                     pid = item.get("product_id")
                     if pid and pid not in product_ids:

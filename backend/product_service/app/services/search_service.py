@@ -38,6 +38,7 @@ PRODUCT_MAPPING = {
 
 class ElasticsearchService:
     def __init__(self):
+        self.index_name = INDEX_NAME
         if settings.ES_API_KEY:
             # Elastic Cloud
             self.client = AsyncElasticsearch(

@@ -96,9 +96,34 @@ async def _parse_with_ai(query: str) -> Optional[dict]:
             genai.configure(api_key=settings.GEMINI_API_KEY)
             model = genai.GenerativeModel(settings.GEMINI_MODEL)
             resp = await model.generate_content_async(prompt)
-            return _extract_json(resp.text)
+            result = _extract_json(resp.text)
+            if result:
+                return result
         except Exception as exc:
             logger.warning("Gemini parse-intent failed: %s", exc)
+
+    # Try Groq (if configured)
+    if settings.GROQ_API_KEY:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
+                    json={
+                        "model": settings.GROQ_MODEL,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.1,
+                        "max_tokens": 256,
+                    },
+                )
+                resp.raise_for_status()
+                text = resp.json()["choices"][0]["message"]["content"]
+                result = _extract_json(text)
+                if result:
+                    return result
+        except Exception as exc:
+            logger.warning("Groq parse-intent failed: %s", exc)
 
     return None
 

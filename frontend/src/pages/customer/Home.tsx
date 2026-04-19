@@ -138,7 +138,7 @@ export default function Home() {
             return (r.data.items || []) as RecommendationCardItem[]
         },
         enabled: !!user,
-        staleTime: 5 * 60_000,
+        staleTime: 0,
     })
 
     const { data: categoryPicks } = useQuery({
@@ -148,7 +148,7 @@ export default function Home() {
             return r.data as { items: RecommendationCardItem[]; category_affinity?: string[] }
         },
         enabled: !!user,
-        staleTime: 5 * 60_000,
+        staleTime: 0,
     })
 
     const recLabel = (() => {
@@ -225,7 +225,7 @@ export default function Home() {
                                     className="inline-flex items-center gap-2 bg-white text-primary-700 font-bold px-8 py-3.5 rounded-2xl hover:bg-primary-50 transition-all duration-200 shadow-lg hover:shadow-xl active:scale-[0.98]"
                                 >
                                     <span>Shop Now</span>
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
                                 </Link>
                                 <Link
                                     to="/events"
@@ -249,7 +249,7 @@ export default function Home() {
                                 </div>
                                 <Link to="/products" className="text-sm font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors flex items-center gap-1">
                                     View all
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
                                 </Link>
                             </div>
                             <div className="flex gap-4 overflow-x-auto pb-3 -mx-1 px-1 snap-x snap-mandatory scrollbar-hide">

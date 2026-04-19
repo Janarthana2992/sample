@@ -348,8 +348,12 @@ export default function AdminProducts() {
                                             <Link to={`/products/${p.product_id}`} className="text-primary-600 dark:text-primary-400 hover:text-primary-600 transition-colors text-xs">View</Link>
                                             <Link to={`/admin/products/${p.product_id}/edit`} className="text-green-600 hover:text-primary-600 transition-colors text-xs">Edit</Link>
                                             <button
-                                                onClick={() => deleteMutation.mutate(p.product_id)}
-                                                className="text-red-500 hover:text-primary-600 transition-colors text-xs"
+                                                onClick={() => {
+                                                    if (window.confirm(`Deactivate "${p.name}"? It will be hidden from customers.`)) {
+                                                        deleteMutation.mutate(p.product_id)
+                                                    }
+                                                }}
+                                                className="text-red-500 hover:text-red-700 transition-colors text-xs"
                                             >
                                                 Delete
                                             </button>

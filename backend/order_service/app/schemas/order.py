@@ -105,8 +105,9 @@ class CheckoutRequest(BaseModel):
 
 
 class StatusUpdateRequest(BaseModel):
-    status: str = Field(pattern="^(confirmed|dispatched|delivered|cancelled)$")
+    status: str = Field(pattern="^(confirmed|dispatched|delivered|cancelled|return_requested|returned)$")
     tracking_number: Optional[str] = None
+    note: Optional[str] = None
 
 
 class CancelRequest(BaseModel):

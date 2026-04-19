@@ -56,6 +56,7 @@ export function Header() {
     const [showUserMenu, setShowUserMenu] = useState(false)
     const [showMobileSearch, setShowMobileSearch] = useState(false)
     const [aiSearchEnabled, setAiSearchEnabled] = useState(false)
+    const [suggestionsError, setSuggestionsError] = useState(false)
     const [dark, toggleDark] = useDarkMode()
     const debounceRef = useRef<ReturnType<typeof setTimeout>>()
     const navigate = useNavigate()
@@ -63,6 +64,7 @@ export function Header() {
     useEffect(() => {
         if (query.length < 2) {
             setSuggestions([])
+            setSuggestionsError(false)
             if (isSearchFocused) {
                 const recent = readRecentSearches(3)
                 setRecentSearches(recent)
@@ -74,9 +76,14 @@ export function Header() {
         debounceRef.current = setTimeout(async () => {
             try {
                 const data = await productService.autocomplete(query)
+                setSuggestionsError(false)
                 setSuggestions(data.suggestions)
                 setShowSuggestions(true)
-            } catch { /* ignored */ }
+            } catch {
+                setSuggestionsError(true)
+                setSuggestions([])
+                setShowSuggestions(true)
+            }
         }, 300)
         return () => clearTimeout(debounceRef.current)
     }, [query, isSearchFocused])
@@ -129,7 +136,7 @@ export function Header() {
                         }`}
                     title={aiSearchEnabled ? 'AI search ON — click to disable' : 'Enable AI-powered search'}
                 >
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L9.19 8.63L2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z"/></svg>
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L9.19 8.63L2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z" /></svg>
                 </button>
                 <input
                     type="search"
@@ -151,11 +158,11 @@ export function Header() {
                     autoFocus={showMobileSearch}
                 />
                 <button type="submit" className="px-4 py-2.5 text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors shrink-0">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
                 </button>
             </div>
             <AnimatePresence>
-                {showSuggestions && visibleSuggestions.length > 0 && (
+                {showSuggestions && (suggestionsError || visibleSuggestions.length > 0) && (
                     <motion.ul
                         initial={{ opacity: 0, y: -4 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -163,34 +170,43 @@ export function Header() {
                         transition={{ duration: 0.15 }}
                         className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-glass overflow-hidden z-50"
                     >
-                        {showingRecentSearches && (
-                            <li className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                                Recent
+                        {suggestionsError ? (
+                            <li className="px-4 py-2.5 text-xs text-gray-400 dark:text-gray-500 flex items-center gap-2">
+                                <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx={12} cy={12} r={10} /><path d="M12 8v4m0 4h.01" /></svg>
+                                Search suggestions unavailable — press Enter to search
                             </li>
+                        ) : (
+                            <>
+                                {showingRecentSearches && (
+                                    <li className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                                        Recent
+                                    </li>
+                                )}
+                                {visibleSuggestions.map(s => (
+                                    <li key={s}>
+                                        <button
+                                            type="button"
+                                            className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 flex items-center gap-2.5 transition-colors"
+                                            onMouseDown={() => {
+                                                setQuery(s)
+                                                const updated = trackRecentSearch(s)
+                                                setRecentSearches(updated.slice(0, 3))
+                                                navigate(`/products?q=${encodeURIComponent(s)}`)
+                                                setShowSuggestions(false)
+                                                setShowMobileSearch(false)
+                                            }}
+                                        >
+                                            {showingRecentSearches ? (
+                                                <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                            ) : (
+                                                <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
+                                            )}
+                                            <span>{s}</span>
+                                        </button>
+                                    </li>
+                                ))}
+                            </>
                         )}
-                        {visibleSuggestions.map(s => (
-                            <li key={s}>
-                                <button
-                                    type="button"
-                                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 flex items-center gap-2.5 transition-colors"
-                                    onMouseDown={() => {
-                                        setQuery(s)
-                                        const updated = trackRecentSearch(s)
-                                        setRecentSearches(updated.slice(0, 3))
-                                        navigate(`/products?q=${encodeURIComponent(s)}`)
-                                        setShowSuggestions(false)
-                                        setShowMobileSearch(false)
-                                    }}
-                                >
-                                    {showingRecentSearches ? (
-                                        <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                    ) : (
-                                        <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
-                                    )}
-                                    <span>{s}</span>
-                                </button>
-                            </li>
-                        ))}
                     </motion.ul>
                 )}
             </AnimatePresence>
@@ -205,7 +221,7 @@ export function Header() {
                     {/* Logo */}
                     <Link to="/" className="flex items-center gap-2 shrink-0 group">
                         <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-glow transition-shadow duration-300">
-                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>
                         </div>
                         <span className="text-lg font-bold text-gray-900 dark:text-white hidden sm:block">ShopHere</span>
                     </Link>
@@ -227,7 +243,7 @@ export function Header() {
                             onClick={() => setShowMobileSearch(v => !v)}
                             aria-label="Search"
                         >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx={11} cy={11} r={8} /><path d="m21 21-4.35-4.35" /></svg>
                         </button>
 
                         {/* Dark mode toggle */}
@@ -238,9 +254,9 @@ export function Header() {
                             title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
                         >
                             {dark ? (
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx={12} cy={12} r={5}/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx={12} cy={12} r={5} /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" /></svg>
                             ) : (
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" /></svg>
                             )}
                         </button>
 
@@ -250,10 +266,10 @@ export function Header() {
                             <>
                                 {/* Wishlist icon */}
                                 <Link to="/wishlist" className="relative p-2 rounded-xl text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors" title="Wishlist">
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
                                 </Link>
                                 <Link to="/cart" className="relative p-2 rounded-xl text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors">
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>
                                     {itemCount > 0 && (
                                         <motion.span
                                             initial={{ scale: 0 }}
@@ -286,26 +302,26 @@ export function Header() {
                                                 </div>
                                                 <div className="p-1.5">
                                                     <Link to="/events" className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors md:hidden" onClick={() => setShowUserMenu(false)}>
-                                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><rect x={3} y={4} width={18} height={18} rx={2}/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><rect x={3} y={4} width={18} height={18} rx={2} /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
                                                         Events
                                                     </Link>
                                                     <Link to="/orders" onClick={() => setShowUserMenu(false)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors">
-                                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
                                                         My Orders
                                                     </Link>
                                                     <Link to="/wishlist" onClick={() => setShowUserMenu(false)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors">
-                                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+                                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
                                                         Wishlist
                                                     </Link>
                                                     <Link to="/addresses" onClick={() => setShowUserMenu(false)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors">
-                                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                                                         Saved Addresses
                                                     </Link>
                                                     <button
                                                         onClick={() => { logout(); navigate('/login') }}
                                                         className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-xl transition-colors"
                                                     >
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" /></svg>
                                                         Sign Out
                                                     </button>
                                                 </div>

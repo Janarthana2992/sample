@@ -35,6 +35,46 @@ def _require_internal_service_token(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid internal service token")
 
 
+async def _auto_reindex_if_empty() -> None:
+    """On startup, populate ES from Postgres if the index has no documents."""
+    try:
+        count_resp = await es_service.client.count(index=es_service.index_name)
+        if count_resp.get("count", 0) > 0:
+            logger.info("ES index already has %d documents — skipping auto-reindex", count_resp["count"])
+            return
+    except Exception as exc:
+        logger.warning("ES count check failed (%s) — attempting reindex anyway", exc)
+
+    logger.info("ES index is empty — running startup reindex from Postgres...")
+    try:
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+        from app.db.database import AsyncSessionLocal
+        from app.models.product import Product, Category
+        from app.services.product_service import _index_to_es, refresh_product_rating
+
+        count = 0
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Product).options(
+                    selectinload(Product.images),
+                    selectinload(Product.product_categories),
+                )
+            )
+            products = result.scalars().all()
+            for product in products:
+                cat_ids = [pc.category_id for pc in product.product_categories]
+                cat_result = await db.execute(
+                    select(Category.name).where(Category.category_id.in_(cat_ids))
+                )
+                cat_names = [r[0] for r in cat_result.all()]
+                await _index_to_es(product, cat_ids, cat_names)
+                count += 1
+        logger.info("Startup reindex complete — indexed %d products", count)
+    except Exception as exc:
+        logger.error("Startup reindex failed: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Product Service starting...")
@@ -44,6 +84,7 @@ async def lifespan(app: FastAPI):
     await init_redis()
     await init_kafka_producer()
     await start_consumer()
+    await _auto_reindex_if_empty()
     logger.info("Product Service ready.")
     yield
     await stop_consumer()
