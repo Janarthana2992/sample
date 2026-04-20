@@ -53,6 +53,12 @@ class PasswordResetConfirm(BaseModel):
         return v
 
 
+class PermissionOut(BaseModel):
+    module: str
+
+    model_config = {"from_attributes": True}
+
+
 class UserResponse(BaseModel):
     user_id: uuid.UUID
     email: str
@@ -61,6 +67,7 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
     created_at: datetime
+    permissions: List["PermissionOut"] = []
 
     model_config = {"from_attributes": True}
 

@@ -14,12 +14,12 @@ import { StarRating } from '../../components/common/StarRating'
 import { AnimatedPage, FadeInView } from '../../components/common/AnimatedPage'
 import { aiClient } from '../../services/api'
 
-/** Strip localhost origin from image URLs so they work via Nginx in production */
+/** Strip any absolute origin from image URLs so they work via Nginx regardless of host */
 function normalizeImageUrl(url: string | undefined): string | undefined {
     if (!url) return undefined
     try {
         const p = new URL(url)
-        if (p.hostname === 'localhost' || p.hostname === '127.0.0.1') return p.pathname + p.search
+        return p.pathname + p.search
     } catch { /* relative — fine */ }
     return url
 }
@@ -531,6 +531,9 @@ export default function ProductDetail() {
                                                 <div className="flex items-center gap-2 mb-1 flex-wrap">
                                                     <StarRating rating={review.rating} size="sm" />
                                                     <span className="text-xs text-gray-400">{new Date(review.created_at).toLocaleDateString('en-IN')}</span>
+                                                    {review.updated_at && review.updated_at !== review.created_at && (
+                                                        <span className="text-xs text-gray-400 italic">(edited)</span>
+                                                    )}
                                                     <span className="badge bg-green-100 text-green-700 text-xs">✓ Verified Purchase</span>
                                                 </div>
                                                 {editReview?.review_id === review.review_id ? (

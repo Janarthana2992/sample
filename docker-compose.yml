@@ -239,8 +239,6 @@ services:
       ORDER_SERVICE_URL: http://order_service:8004
       CART_SERVICE_URL: http://cart_service:8003
       REDIS_URL: redis://:${REDIS_PASSWORD:-redis_pass}@redis:6379/1
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
       CHAT_SESSION_TTL: 1800
       FAISS_INDEX_PATH: /app/faiss_store
       MODEL_NAME: all-MiniLM-L6-v2

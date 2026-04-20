@@ -7,6 +7,7 @@ export interface User {
     role: 'admin' | 'staff' | 'customer'
     is_active: boolean
     created_at: string
+    permissions?: Array<{ module: string }>
 }
 
 export interface TokenResponse {
@@ -90,6 +91,14 @@ export interface Event {
     created_at: string
 }
 
+export interface ReviewReply {
+    reply_id: string
+    reply_text: string
+    is_retracted: boolean
+    created_at: string
+    updated_at?: string
+}
+
 export interface Review {
     review_id: string
     product_id: string
@@ -101,14 +110,6 @@ export interface Review {
     created_at: string
     updated_at?: string
     reply?: ReviewReply
-}
-
-export interface ReviewReply {
-    reply_id: string
-    reply_text: string
-    is_retracted: boolean
-    created_at: string
-    updated_at?: string
 }
 
 // ─── Product Variants ────────────────────────────────────────

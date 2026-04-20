@@ -8,6 +8,7 @@ import { StarRating } from '../../components/common/StarRating'
 
 export default function StaffReviews() {
     const [selectedReview, setSelectedReview] = useState<any>(null)
+    const [productSearch, setProductSearch] = useState('')
     const { register, handleSubmit, reset } = useForm()
     const qc = useQueryClient()
 
@@ -16,6 +17,21 @@ export default function StaffReviews() {
         queryFn: () => productService.listAllReviews({ page: 1, size: 50 }),
         staleTime: 0,
         refetchOnWindowFocus: true,
+    })
+
+    const { data: productsData } = useQuery({
+        queryKey: ['staff', 'products-list'],
+        queryFn: () => productService.list({ size: 200, page: 1 }),
+    })
+    const productNameMap: Record<string, string> = {}
+    for (const p of (productsData as any)?.items ?? []) {
+        productNameMap[p.product_id] = p.name
+    }
+
+    const filteredReviews = (reviews?.items ?? []).filter((r: any) => {
+        if (!productSearch) return true
+        const name = productNameMap[r.product_id] ?? ''
+        return name.toLowerCase().includes(productSearch.toLowerCase())
     })
 
     const replyMutation = useMutation({
@@ -40,6 +56,15 @@ export default function StaffReviews() {
     return (
         <div className="space-y-6">
             <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Customer Reviews</h1>
+            <div className="flex gap-2">
+                <input
+                    type="text"
+                    placeholder="Search by product name..."
+                    value={productSearch}
+                    onChange={e => setProductSearch(e.target.value)}
+                    className="input max-w-xs"
+                />
+            </div>
 
             {selectedReview && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setSelectedReview(null)}>
@@ -60,7 +85,7 @@ export default function StaffReviews() {
             )}
 
             <div className="space-y-3">
-                {reviews?.items?.map((review: any) => (
+                {filteredReviews.map((review: any) => (
                     <div key={review.review_id} className="card space-y-2">
                         <div className="flex items-start justify-between">
                             <div>
@@ -91,7 +116,7 @@ export default function StaffReviews() {
                         )}
                     </div>
                 ))}
-                {!reviews?.items?.length && (
+                {!filteredReviews.length && (
                     <p className="text-center text-surface-400 py-10">No reviews yet</p>
                 )}
             </div>

@@ -39,6 +39,27 @@ def _internal_service_headers() -> dict[str, str]:
     return {"X-Internal-Service-Token": settings.INTERNAL_SERVICE_TOKEN}
 
 
+async def _adjust_product_stock(items: list, delta_sign: int):
+    """Call product service to adjust stock. delta_sign: -1 to decrement, +1 to restore."""
+    if not items:
+        return
+    try:
+        adjust_payload = {
+            "items": [
+                {"product_id": str(item["product_id"]), "delta": delta_sign * item["quantity"]}
+                for item in items
+            ]
+        }
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.post(
+                f"{settings.PRODUCT_SERVICE_URL}/internal/stock-adjust",
+                json=adjust_payload,
+                headers=_internal_service_headers(),
+            )
+    except Exception as exc:
+        logger.warning("Stock adjustment failed: %s", exc)
+
+
 async def create_order(db: AsyncSession, user_id: str, payload: CheckoutRequest) -> Order:
     """
     Atomic order creation:
@@ -190,7 +211,16 @@ async def create_order(db: AsyncSession, user_id: str, payload: CheckoutRequest)
             selectinload(Order.status_history),
         )
     )
-    return result.scalar_one()
+    final_order = result.scalar_one()
+
+    # Decrement stock for ordered items (best-effort, non-blocking)
+    stock_items = [
+        {"product_id": str(i.product_id), "quantity": i.quantity}
+        for i in final_order.items
+    ]
+    await _adjust_product_stock(stock_items, delta_sign=-1)
+
+    return final_order
 
 
 async def get_order(db: AsyncSession, order_id: uuid.UUID, user_id: str, role: str) -> Order:
@@ -288,4 +318,11 @@ async def update_order_status(
         select(Order).where(Order.order_id == order.order_id)
         .options(selectinload(Order.items), selectinload(Order.shipping_address), selectinload(Order.status_history))
     )
-    return result.scalar_one()
+    updated_order = result.scalar_one()
+
+    # Restore stock when admin/staff cancels an order (not on return)
+    if payload.status == "cancelled" and old_status not in ("cancelled",):
+        stock_items = [{"product_id": str(i.product_id), "quantity": i.quantity} for i in updated_order.items]
+        await _adjust_product_stock(stock_items, delta_sign=1)
+
+    return updated_order

@@ -17,6 +17,7 @@ from app.routes.handoff import router as handoff_router
 from app.services.faiss_service import faiss_service
 from app.services.embedding_service import get_model
 from app.services.rag_service import rag_kb
+from app.services.chat_service import init_intent_embeddings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI):
     logger.info("AI Service starting...")
     faiss_service.load()
     get_model()  # warm up embedding model
+    init_intent_embeddings()  # pre-compute intent vectors for chat
     rag_kb.load()  # load persisted RAG index
     logger.info("AI Service ready. FAISS vectors: %d, RAG chunks: %d",
                 len(faiss_service.product_ids), len(rag_kb.chunks))

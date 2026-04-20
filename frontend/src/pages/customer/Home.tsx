@@ -62,10 +62,10 @@ export default function Home() {
         queryFn: () => productService.listPromoted(1, 30),
     })
 
-    // Marquee: promoted products only; fall back to featured if no promoted
+    // Marquee: promoted products only — no fallback to featured
     const promotedProducts = promotedData?.items ?? []
     const featuredProducts = featuredData?.items ?? []
-    const marqueeProducts = promotedProducts.length > 0 ? promotedProducts : featuredProducts
+    const marqueeProducts = promotedProducts
 
     const { data: categories = [] } = useQuery({
         queryKey: ['home-categories'],
@@ -262,7 +262,7 @@ export default function Home() {
                         </section>
                     </FadeInView>
                 )}
-                {isFeaturedLoading && !featuredData && (
+                {isFeaturedLoading && !promotedData && (
                     <ProductGridSkeleton count={4} />
                 )}
 

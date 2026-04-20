@@ -10,6 +10,7 @@ type RatingSort = 'none' | 'asc' | 'desc'
 
 export default function AdminReviews() {
     const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
+    const [productSearch, setProductSearch] = useState('')
     const [ratingSort, setRatingSort] = useState<RatingSort>('none')
     const [expandedId, setExpandedId] = useState<string | null>(null)
     const [replyText, setReplyText] = useState('')
@@ -101,7 +102,9 @@ export default function AdminReviews() {
         )
     }, [productReviewsData, ratingSort])
 
-    const productsWithReviews = products.filter(p => reviewSummary[p.product_id])
+    const productsWithReviews = products
+        .filter(p => reviewSummary[p.product_id])
+        .filter(p => !productSearch || p.name.toLowerCase().includes(productSearch.toLowerCase()))
 
     const ReviewCard = ({ review }: { review: Review }) => (
         <div className="card space-y-3">
@@ -230,6 +233,15 @@ export default function AdminReviews() {
                 <span className="text-sm text-surface-500 dark:text-surface-400">
                     {allReviews.length} review{allReviews.length !== 1 ? 's' : ''} · {productsWithReviews.length} product{productsWithReviews.length !== 1 ? 's' : ''}
                 </span>
+            </div>
+            <div className="flex gap-2">
+                <input
+                    type="text"
+                    placeholder="Search products..."
+                    value={productSearch}
+                    onChange={e => setProductSearch(e.target.value)}
+                    className="input max-w-xs"
+                />
             </div>
 
             {productsLoading ? <LoadingSpinner /> : (

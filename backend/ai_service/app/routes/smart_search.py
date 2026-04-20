@@ -86,45 +86,25 @@ async def parse_search_intent(payload: IntentRequest):
 
 
 async def _parse_with_ai(query: str) -> Optional[dict]:
-    """Try local LLM, fall back to Gemini, then return None."""
+    """Parse search intent using the local SLM."""
     prompt = PARSE_PROMPT.format(categories=", ".join(CATEGORIES), query=query)
-
-    # Try Gemini (if configured)
-    if settings.GEMINI_API_KEY:
-        try:
-            import google.generativeai as genai
-            genai.configure(api_key=settings.GEMINI_API_KEY)
-            model = genai.GenerativeModel(settings.GEMINI_MODEL)
-            resp = await model.generate_content_async(prompt)
-            result = _extract_json(resp.text)
-            if result:
-                return result
-        except Exception as exc:
-            logger.warning("Gemini parse-intent failed: %s", exc)
-
-    # Try Groq (if configured)
-    if settings.GROQ_API_KEY:
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
-                    json={
-                        "model": settings.GROQ_MODEL,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.1,
-                        "max_tokens": 256,
-                    },
-                )
-                resp.raise_for_status()
-                text = resp.json()["choices"][0]["message"]["content"]
-                result = _extract_json(text)
-                if result:
-                    return result
-        except Exception as exc:
-            logger.warning("Groq parse-intent failed: %s", exc)
-
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{settings.LOCAL_LLM_URL}/chat/completions",
+                json={
+                    "model": settings.LOCAL_LLM_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.1,
+                    "max_tokens": 256,
+                },
+            )
+            resp.raise_for_status()
+            text = resp.json()["choices"][0]["message"]["content"]
+            return _extract_json(text)
+    except Exception as exc:
+        logger.warning("Local SLM parse-intent failed: %s", exc)
     return None
 
 

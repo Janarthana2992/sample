@@ -133,7 +133,14 @@ async def customer_cancel_order(
         select(OrderModel).where(OrderModel.order_id == order_id)
         .options(selectinload(OrderModel.items), selectinload(OrderModel.shipping_address), selectinload(OrderModel.status_history))
     )
-    return result.scalar_one()
+    final_order = result.scalar_one()
+
+    # Restore stock for cancelled order items (best-effort)
+    from app.services.order_service import _adjust_product_stock
+    stock_items = [{"product_id": str(i.product_id), "quantity": i.quantity} for i in final_order.items]
+    await _adjust_product_stock(stock_items, delta_sign=1)
+
+    return final_order
 
 
 @router.post("/orders/{order_id}/return", response_model=OrderOut)
@@ -381,26 +388,25 @@ async def top_products(
     if auth["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admins only")
     from sqlalchemy import text
-    date_interval = {
-        "today": "0 days",
-        "7d": "7 days",
-        "30d": "30 days",
+    date_filter_sql = {
+        "today": "INTERVAL '0 days'",
+        "7d": "INTERVAL '7 days'",
+        "30d": "INTERVAL '30 days'",
     }[period]
     result = await db.execute(
-        text("""
+        text(f"""
         SELECT oi.product_id,
                MAX(oi.product_name) AS product_name,
                SUM(oi.quantity)     AS units_sold,
                SUM(oi.quantity * oi.unit_price) AS revenue
         FROM order_items oi
         JOIN orders o ON o.order_id = oi.order_id
-        WHERE o.created_at >= CURRENT_DATE - CAST(:interval AS INTERVAL)
+        WHERE o.created_at >= CURRENT_DATE - {date_filter_sql}
           AND o.status != 'cancelled'
         GROUP BY oi.product_id
         ORDER BY units_sold DESC
         LIMIT 10
         """),
-        {"interval": date_interval},
     )
     rows = result.fetchall()
     return [{"product_id": str(r.product_id), "product_name": r.product_name or str(r.product_id)[:8], "units_sold": r.units_sold, "revenue": float(r.revenue)} for r in rows]

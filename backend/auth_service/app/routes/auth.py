@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
-from app.models.user import User
+from app.models.user import User, StaffPermission
 from app.schemas.auth import (
     ChangePasswordRequest,
     LoginRequest,
@@ -64,7 +64,15 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended")
 
-    access = create_access_token(str(user.user_id), user.role)
+    # Load permissions for staff users and include them in the JWT
+    permissions = None
+    if user.role == "staff":
+        perm_result = await db.execute(
+            select(StaffPermission).where(StaffPermission.user_id == user.user_id)
+        )
+        permissions = [p.module for p in perm_result.scalars().all()]
+
+    access = create_access_token(str(user.user_id), user.role, permissions=permissions)
     refresh = create_refresh_token(str(user.user_id))
     return TokenResponse(access_token=access, refresh_token=refresh)
 
@@ -84,7 +92,15 @@ async def refresh_token(payload: RefreshRequest, db: AsyncSession = Depends(get_
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    access = create_access_token(str(user.user_id), user.role)
+    # Re-load permissions for staff on refresh so they stay current
+    permissions = None
+    if user.role == "staff":
+        perm_result = await db.execute(
+            select(StaffPermission).where(StaffPermission.user_id == user.user_id)
+        )
+        permissions = [p.module for p in perm_result.scalars().all()]
+
+    access = create_access_token(str(user.user_id), user.role, permissions=permissions)
     new_refresh = create_refresh_token(str(user.user_id))
     return TokenResponse(access_token=access, refresh_token=new_refresh)
 
@@ -119,8 +135,12 @@ async def confirm_password_reset(payload: PasswordResetConfirm, db: AsyncSession
 
 
 @router.get("/me", response_model=UserResponse)
-async def me(user: User = Depends(get_current_user)):
-    return user
+async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from sqlalchemy.orm import selectinload
+    result = await db.execute(
+        select(User).where(User.user_id == user.user_id).options(selectinload(User.permissions))
+    )
+    return result.scalar_one()
 
 
 @router.patch("/me", response_model=UserResponse)

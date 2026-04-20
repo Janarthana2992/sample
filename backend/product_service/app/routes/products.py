@@ -2,13 +2,15 @@ from typing import List, Optional
 import csv
 import io
 import uuid
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db.database import get_db
 from app.schemas.product import (
     FilterRequest, PaginatedProducts, ProductCreate, ProductOut,
@@ -279,3 +281,52 @@ async def import_products_csv(
 
     await db.commit()
     return {"created": created, "updated": updated, "errors": errors, "error_details": error_list[:20]}
+
+
+# ── Internal: stock adjustment (called by order service) ────
+
+_internal_router = APIRouter(prefix="/internal", tags=["internal"])
+
+
+class StockAdjustItem(BaseModel):
+    product_id: uuid.UUID
+    delta: int  # negative = decrement, positive = restore
+
+
+class StockAdjustRequest(BaseModel):
+    items: list[StockAdjustItem]
+
+
+@_internal_router.post("/stock-adjust", status_code=status.HTTP_204_NO_CONTENT)
+async def internal_adjust_stock(
+    payload: StockAdjustRequest,
+    x_internal_service_token: str = Header(default=None, alias="X-Internal-Service-Token"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk stock adjustment called by the order service. Uses service token auth."""
+    import secrets as _secrets
+    if not x_internal_service_token or not _secrets.compare_digest(
+        x_internal_service_token, settings.INTERNAL_SERVICE_TOKEN
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+    for item in payload.items:
+        result = await db.execute(
+            select(Product).where(Product.product_id == item.product_id)
+        )
+        product = result.scalar_one_or_none()
+        if not product:
+            continue
+        new_qty = max(0, product.stock_quantity + item.delta)
+        product.stock_quantity = new_qty
+        product.stock_status = product_service._compute_stock_status(new_qty)
+        product.updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    # Publish stock_updated events via Kafka (best-effort)
+    for item in payload.items:
+        try:
+            from app.services.kafka_producer import publish_product_event
+            await publish_product_event("stock_updated", {"product_id": str(item.product_id)})
+        except Exception:
+            pass

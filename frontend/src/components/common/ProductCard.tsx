@@ -6,14 +6,12 @@ import { cartService } from '../../services/cart'
 import { useAuthStore } from '../../store/authStore'
 import type { Product } from '../../types'
 
-/** Strip any absolute localhost/127.0.0.1 origin so images work in production via Nginx proxy */
+/** Strip any absolute origin so images work via Nginx regardless of host */
 function normalizeImageUrl(url: string | undefined): string | undefined {
     if (!url) return undefined
     try {
         const parsed = new URL(url)
-        if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
-            return parsed.pathname + parsed.search
-        }
+        return parsed.pathname + parsed.search
     } catch { /* relative URL — fine as-is */ }
     return url
 }

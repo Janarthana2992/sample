@@ -35,7 +35,7 @@ async def create_review(
             LIMIT 1
         """),
         {
-            "user_id": user.user_id,
+            "user_id": uuid.UUID(user.user_id),
             "order_id": payload.order_id,
             "product_id": payload.product_id,
         }
@@ -50,7 +50,7 @@ async def create_review(
     existing = await db.execute(
         select(Review).where(
             Review.product_id == payload.product_id,
-            Review.user_id == user.user_id,
+            Review.user_id == uuid.UUID(user.user_id),
             Review.order_id == payload.order_id,
         )
     )
@@ -59,7 +59,7 @@ async def create_review(
 
     review = Review(
         product_id=payload.product_id,
-        user_id=user.user_id,
+        user_id=uuid.UUID(user.user_id),
         order_id=payload.order_id,
         rating=payload.rating,
         review_text=payload.review_text,
@@ -178,7 +178,7 @@ async def update_review(
     review = result.scalar_one_or_none()
     if not review:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
-    if review.user_id != user.user_id:
+    if str(review.user_id) != user.user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only edit your own reviews")
     if payload.rating is not None:
         review.rating = payload.rating
@@ -203,7 +203,7 @@ async def delete_review(
     if not review:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
     # Admin can delete any; customer can only delete their own
-    if user.role != "admin" and review.user_id != user.user_id:
+    if user.role != "admin" and str(review.user_id) != user.user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
     product_id = review.product_id
     await db.delete(review)

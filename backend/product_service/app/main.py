@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.db.database import engine, Base
 from app.models import product  # noqa: F401
-from app.routes.products import router as products_router
+from app.routes.products import router as products_router, _internal_router as products_internal_router
 from app.routes.search import router as search_router
 from app.routes.deals import router as deals_router
 from app.routes.reviews import router as reviews_router
@@ -118,6 +118,7 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/static/products", StaticFiles(directory=settings.UPLOAD_DIR), name="product-images")
 
 app.include_router(products_router)
+app.include_router(products_internal_router)
 app.include_router(search_router)
 app.include_router(deals_router)
 app.include_router(reviews_router)

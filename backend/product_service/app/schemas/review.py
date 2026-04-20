@@ -39,6 +39,7 @@ class ReviewOut(BaseModel):
     review_text: Optional[str]
     is_flagged: bool
     created_at: datetime
+    updated_at: Optional[datetime] = None
     reply: Optional[ReviewReplyOut] = None
 
     model_config = {"from_attributes": True}
