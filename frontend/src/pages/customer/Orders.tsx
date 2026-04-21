@@ -384,7 +384,8 @@ export default function Orders() {
                                                 <span className="text-xs text-gray-400 line-through">₹{Number(rec.mrp).toLocaleString('en-IN')}</span>
                                             )}
                                         </div>
-                                    </Link>
+                                    </div>
+                                </Link>
                                 ))}
                             </div>
                         </section>
