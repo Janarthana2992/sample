@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useWatch } from 'react-hook-form'
 import toast from 'react-hot-toast'
@@ -16,6 +16,8 @@ function DealForm({
     defaultValues,
     categories,
     products,
+    existingDeals,
+    editingDealId,
     onSubmit,
     onCancel,
     isSubmitting,
@@ -24,21 +26,35 @@ function DealForm({
     defaultValues?: Record<string, any>
     categories: Category[]
     products: Product[]
+    existingDeals: Deal[]
+    editingDealId?: string
     onSubmit: (data: any) => void
     onCancel: () => void
     isSubmitting: boolean
     submitLabel: string
 }) {
-    const { register, handleSubmit, control, reset, setValue } = useForm({ defaultValues })
+    const { register, handleSubmit, control, reset, setValue } = useForm({
+        defaultValues: defaultValues ?? { deal_type: 'percentage', applies_to: 'all_products', is_active: true, staff_visible: false },
+    })
+    const dealType = useWatch({ control, name: 'deal_type' })
     const appliesTo = useWatch({ control, name: 'applies_to' })
+    const startDt = useWatch({ control, name: 'start_datetime' })
+    const endDt = useWatch({ control, name: 'end_datetime' })
 
     // multi-select category_ids
     const [selCats, setSelCats] = useState<string[]>(defaultValues?.category_ids ?? [])
     // multi-select product_ids with search
     const [selProds, setSelProds] = useState<string[]>(defaultValues?.product_ids ?? [])
     const [prodSearch, setProdSearch] = useState('')
+    const [pendingPayload, setPendingPayload] = useState<any>(null)
+    // ids of conflicting deals the admin wants to deactivate
+    const [deactivateIds, setDeactivateIds] = useState<Set<string>>(new Set())
 
     useEffect(() => { reset(defaultValues) }, [])
+    // Clear discount_value when switching to a type that has no value
+    useEffect(() => {
+        if (dealType === 'bogo' || dealType === 'free_shipping') setValue('discount_value', '')
+    }, [dealType, setValue])
 
     const filteredProds = products.filter(p =>
         !prodSearch || p.name.toLowerCase().includes(prodSearch.toLowerCase()) || p.sku.toLowerCase().includes(prodSearch.toLowerCase())
@@ -46,11 +62,106 @@ function DealForm({
     // Cap display at 100 when no search is active; show all matches when searching
     const displayProds = prodSearch ? filteredProds : filteredProds.slice(0, 100)
 
+    // ── Overlap detection ──────────────────────────────────────
+    const overlaps = useMemo(() => {
+        if (!startDt || !endDt) return []
+        const newStart = new Date(startDt).getTime()
+        const newEnd = new Date(endDt).getTime()
+        if (isNaN(newStart) || isNaN(newEnd) || newEnd <= newStart) return []
+
+        const conflicts: { dealId: string; dealName: string; reason: string }[] = []
+
+        // Build a set of category IDs that the selected products belong to
+        const selProdCategoryIds = new Set<string>()
+        if (appliesTo === 'specific_skus' && selProds.length > 0) {
+            for (const prodId of selProds) {
+                const p = products.find(x => x.product_id === prodId)
+                p?.category_ids?.forEach(cid => selProdCategoryIds.add(cid))
+            }
+        }
+
+        for (const deal of existingDeals) {
+            // Skip the deal being edited
+            if (deal.deal_id === editingDealId) continue
+
+            // Check time overlap
+            const dStart = new Date(deal.start_datetime).getTime()
+            const dEnd = new Date(deal.end_datetime).getTime()
+            const timeOverlaps = newStart < dEnd && newEnd > dStart
+            if (!timeOverlaps) continue
+
+            const dCats = new Set(deal.category_ids ?? [])
+            const dProds = new Set(deal.product_ids ?? [])
+
+            // all_products existing deal conflicts with anything
+            if (deal.applies_to === 'all_products' && appliesTo !== undefined) {
+                conflicts.push({ dealId: deal.deal_id, dealName: deal.name, reason: 'covers all products' })
+                continue
+            }
+
+            // New deal is all_products — conflicts with everything
+            if (appliesTo === 'all_products' && deal.applies_to !== undefined) {
+                conflicts.push({ dealId: deal.deal_id, dealName: deal.name, reason: `also applies to ${deal.applies_to === 'specific_category' ? 'overlapping categories' : 'overlapping products'}` })
+                continue
+            }
+
+            // category ↔ category overlap
+            if (appliesTo === 'specific_category' && deal.applies_to === 'specific_category') {
+                const shared = selCats.filter(c => dCats.has(c))
+                if (shared.length > 0) {
+                    const sharedNames = shared.map(c => categories.find(x => x.category_id === c)?.name ?? c)
+                    conflicts.push({ dealId: deal.deal_id, dealName: deal.name, reason: `shares categories: ${sharedNames.join(', ')}` })
+                }
+            }
+
+            // product ↔ product overlap
+            if (appliesTo === 'specific_skus' && deal.applies_to === 'specific_skus') {
+                const shared = selProds.filter(p => dProds.has(p))
+                if (shared.length > 0) {
+                    const sharedNames = shared.map(pid => products.find(x => x.product_id === pid)?.name ?? pid)
+                    conflicts.push({ dealId: deal.deal_id, dealName: deal.name, reason: `shares products: ${sharedNames.slice(0, 3).join(', ')}${shared.length > 3 ? ` +${shared.length - 3} more` : ''}` })
+                }
+            }
+
+            // product ↔ category: existing category deal covers a category that new specific products belong to
+            if (appliesTo === 'specific_skus' && deal.applies_to === 'specific_category' && selProdCategoryIds.size > 0) {
+                const sharedCats = [...selProdCategoryIds].filter(c => dCats.has(c))
+                if (sharedCats.length > 0) {
+                    const sharedNames = sharedCats.map(c => categories.find(x => x.category_id === c)?.name ?? c)
+                    conflicts.push({ dealId: deal.deal_id, dealName: deal.name, reason: `already covers the categories these products belong to: ${sharedNames.join(', ')}` })
+                }
+            }
+
+            // category ↔ product: existing product deal, new deal covers category that those products belong to
+            if (appliesTo === 'specific_category' && deal.applies_to === 'specific_skus' && dProds.size > 0) {
+                const affectedProds = products.filter(p =>
+                    dProds.has(p.product_id) && p.category_ids?.some(c => selCats.includes(c))
+                )
+                if (affectedProds.length > 0) {
+                    const names = affectedProds.slice(0, 3).map(p => p.name)
+                    conflicts.push({ dealId: deal.deal_id, dealName: deal.name, reason: `has specific products in your selected categories: ${names.join(', ')}${affectedProds.length > 3 ? ` +${affectedProds.length - 3} more` : ''}` })
+                }
+            }
+        }
+        return conflicts
+    }, [appliesTo, selCats, selProds, startDt, endDt, existingDeals, editingDealId, products, categories])
+    // ──────────────────────────────────────────────────────────
+
     const submit = (data: any) => {
         const payload: any = { ...data }
-        payload.discount_value = normalizeOptionalNumber(payload.discount_value)
+        payload.discount_value = (data.deal_type === 'bogo' || data.deal_type === 'free_shipping')
+            ? undefined
+            : normalizeOptionalNumber(payload.discount_value)
         payload.min_cart_value = normalizeOptionalNumber(payload.min_cart_value)
         payload.max_uses = normalizeOptionalNumber(payload.max_uses)
+
+        // Convert datetime-local strings (no timezone) to ISO UTC strings
+        if (payload.start_datetime) {
+            payload.start_datetime = new Date(payload.start_datetime).toISOString()
+        }
+        if (payload.end_datetime) {
+            payload.end_datetime = new Date(payload.end_datetime).toISOString()
+        }
 
         if (data.applies_to === 'specific_category' && selCats.length === 0) {
             toast.error('Select at least one category')
@@ -63,6 +174,12 @@ function DealForm({
 
         if (data.applies_to === 'specific_category') payload.category_ids = selCats
         else if (data.applies_to === 'specific_skus') payload.product_ids = selProds
+
+        if (overlaps.length > 0) {
+            setDeactivateIds(new Set()) // reset selections each time modal opens
+            setPendingPayload(payload)
+            return
+        }
         onSubmit(payload)
     }
 
@@ -76,9 +193,9 @@ function DealForm({
                 <div>
                     <label className="label">Deal Type</label>
                     <select className="input" {...register('deal_type', { required: true })}>
-                        <option value="percentage_discount">Percentage Discount</option>
-                        <option value="fixed_amount_off">Fixed Amount Off</option>
-                        <option value="buy_x_get_y">Buy X Get Y</option>
+                        <option value="percentage">Percentage Discount</option>
+                        <option value="flat">Fixed Amount Off</option>
+                        <option value="bogo">Buy X Get Y</option>
                         <option value="free_shipping">Free Shipping</option>
                     </select>
                 </div>
@@ -90,10 +207,36 @@ function DealForm({
                         <option value="specific_skus">Specific SKUs</option>
                     </select>
                 </div>
-                <div>
-                    <label className="label">Discount Value</label>
-                    <input type="number" step="0.01" className="input" {...register('discount_value')} />
-                </div>
+                {(dealType === 'bogo' || dealType === 'free_shipping') ? (
+                    <div className="flex items-center rounded-xl bg-surface-100 dark:bg-surface-800 p-3 text-sm text-surface-500 dark:text-surface-400">
+                        {dealType === 'bogo'
+                            ? '🛍️ BOGO — 50% off cart applied automatically'
+                            : '🚚 Free Shipping — no discount value needed'}
+                    </div>
+                ) : (
+                    <div>
+                        <label className="label">
+                            {dealType === 'percentage' ? 'Discount (%)' : 'Discount Amount (₹)'}
+                        </label>
+                        <div className="relative">
+                            {dealType !== 'percentage' && (
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm pointer-events-none">₹</span>
+                            )}
+                            <input
+                                type="number"
+                                step="0.01"
+                                min={0}
+                                max={dealType === 'percentage' ? 100 : undefined}
+                                className={`input${dealType !== 'percentage' ? ' pl-7' : ''}`}
+                                placeholder={dealType === 'percentage' ? 'e.g. 10' : 'e.g. 200'}
+                                {...register('discount_value')}
+                            />
+                            {dealType === 'percentage' && (
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm pointer-events-none">%</span>
+                            )}
+                        </div>
+                    </div>
+                )}
                 <div>
                     <label className="label">Start Date & Time</label>
                     <input type="datetime-local" className="input" {...register('start_datetime', { required: true })} />
@@ -116,7 +259,7 @@ function DealForm({
             {appliesTo === 'specific_category' && (
                 <div>
                     <label className="label">Select Categories *</label>
-                    <div className="flex flex-wrap gap-2 p-3 border border-gray-300 rounded-lg min-h-[48px]">
+                    <div className="flex flex-wrap gap-2 p-3 border border-surface-300 dark:border-surface-600 rounded-lg min-h-[48px]">
                         {categories.map(cat => (
                             <button
                                 key={cat.category_id}
@@ -127,8 +270,8 @@ function DealForm({
                                         : [...prev, cat.category_id]
                                 )}
                                 className={`px-3 py-1 rounded-lg text-sm border transition-colors ${selCats.includes(cat.category_id)
-                                    ? 'bg-blue-600 text-white border-blue-600'
-                                    : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                                    ? 'bg-primary-600 text-white border-primary-600'
+                                    : 'bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 border-surface-300 dark:border-surface-600 hover:border-blue-400'
                                     }`}
                             >
                                 {cat.name}
@@ -150,9 +293,9 @@ function DealForm({
                         value={prodSearch}
                         onChange={e => setProdSearch(e.target.value)}
                     />
-                    <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto divide-y divide-gray-100">
+                    <div className="border border-surface-300 dark:border-surface-600 rounded-lg max-h-48 overflow-y-auto divide-y divide-surface-100 dark:divide-surface-800">
                         {displayProds.map(p => (
-                            <label key={p.product_id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                            <label key={p.product_id} className="flex items-center gap-3 px-3 py-2 hover:bg-surface-50 dark:hover:bg-surface-800/50 cursor-pointer">
                                 <input
                                     type="checkbox"
                                     checked={selProds.includes(p.product_id)}
@@ -163,14 +306,14 @@ function DealForm({
                                     )}
                                     className="rounded"
                                 />
-                                <span className="text-sm font-mono text-gray-500 shrink-0">{p.sku}</span>
-                                <span className="text-sm text-gray-900 truncate">{p.name}</span>
+                                <span className="text-sm font-mono text-surface-500 dark:text-surface-400 shrink-0">{p.sku}</span>
+                                <span className="text-sm text-surface-900 dark:text-white truncate">{p.name}</span>
                             </label>
                         ))}
-                        {displayProds.length === 0 && <p className="text-sm text-gray-400 p-3">No products found</p>}
+                        {displayProds.length === 0 && <p className="text-sm text-surface-400 p-3">No products found</p>}
                     </div>
                     {selProds.length === 0 && <p className="text-xs text-red-500 mt-1">Select at least one product</p>}
-                    {selProds.length > 0 && <p className="text-xs text-gray-500 mt-1">{selProds.length} product(s) selected</p>}
+                    {selProds.length > 0 && <p className="text-xs text-surface-500 dark:text-surface-400 mt-1">{selProds.length} product(s) selected</p>}
                 </div>
             )}
 
@@ -184,12 +327,88 @@ function DealForm({
                     <span className="text-sm">Visible to Staff</span>
                 </label>
             </div>
+
+            {overlaps.length > 0 && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-sm text-amber-800 dark:text-amber-300">
+                    <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                    </svg>
+                    <span>{overlaps.length} overlapping deal{overlaps.length > 1 ? 's' : ''} — you'll be asked to confirm before saving</span>
+                </div>
+            )}
+
             <div className="flex gap-3">
                 <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
                 <button type="submit" disabled={isSubmitting} className="btn-primary flex-1">
                     {isSubmitting ? 'Saving...' : submitLabel}
                 </button>
             </div>
+
+            {/* Conflict confirmation modal */}
+            {pendingPayload && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-surface-900 rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl">
+                        <div className="flex items-center gap-3">
+                            <span className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
+                                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                                </svg>
+                            </span>
+                            <div>
+                                <h3 className="font-semibold text-surface-900 dark:text-white">Overlapping deals detected</h3>
+                                <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">{overlaps.length} deal{overlaps.length > 1 ? 's' : ''} overlap with this one during the selected time window</p>
+                            </div>
+                        </div>
+
+                        <p className="text-sm text-surface-600 dark:text-surface-400">Choose which conflicting deals to <strong>deactivate</strong> before saving, or save with all deals active (they may stack at checkout).</p>
+
+                        <ul className="space-y-2">
+                            {overlaps.map((c, i) => (
+                                <li key={c.dealId} className="flex items-start gap-3 p-3 rounded-xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800">
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-semibold text-surface-900 dark:text-white">{c.dealName}</p>
+                                        <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">{c.reason}</p>
+                                    </div>
+                                    <label className="flex items-center gap-2 shrink-0 cursor-pointer select-none">
+                                        <input
+                                            type="checkbox"
+                                            className="rounded accent-red-500"
+                                            checked={deactivateIds.has(c.dealId)}
+                                            onChange={() => setDeactivateIds(prev => {
+                                                const next = new Set(prev)
+                                                next.has(c.dealId) ? next.delete(c.dealId) : next.add(c.dealId)
+                                                return next
+                                            })}
+                                        />
+                                        <span className="text-xs font-medium text-red-600 dark:text-red-400 whitespace-nowrap">Deactivate</span>
+                                    </label>
+                                </li>
+                            ))}
+                        </ul>
+
+                        {deactivateIds.size > 0 && (
+                            <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
+                                {deactivateIds.size} deal{deactivateIds.size > 1 ? 's' : ''} will be deactivated immediately when you save.
+                            </p>
+                        )}
+
+                        <div className="flex gap-3">
+                            <button type="button" onClick={() => { setPendingPayload(null); setDeactivateIds(new Set()) }} className="btn-secondary flex-1">Cancel</button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    onSubmit({ ...pendingPayload, _deactivateIds: [...deactivateIds] })
+                                    setPendingPayload(null)
+                                    setDeactivateIds(new Set())
+                                }}
+                                className="btn-primary flex-1"
+                            >
+                                {deactivateIds.size > 0 ? `Deactivate ${deactivateIds.size} & Save` : 'Save Anyway'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </form>
     )
 }
@@ -226,15 +445,35 @@ export default function AdminDeals() {
     const products: Product[] = (productsData as any) ?? []
 
     const createMutation = useMutation({
-        mutationFn: (data: object) => productService.createDeal(data),
+        mutationFn: async (data: any) => {
+            const { _deactivateIds, ...payload } = data
+            if (_deactivateIds?.length) {
+                await Promise.all((_deactivateIds as string[]).map(id => productService.updateDeal(id, { is_active: false })))
+            }
+            return productService.createDeal(payload)
+        },
         onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'deals'] }); setShowCreate(false); toast.success('Deal created!') },
-        onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to create deal'),
+        onError: (err: any) => {
+            const detail = err.response?.data?.detail
+            const msg = Array.isArray(detail) ? detail[0]?.msg || 'Validation error' : detail || 'Failed to create deal'
+            toast.error(msg)
+        },
     })
 
     const updateMutation = useMutation({
-        mutationFn: ({ id, data }: { id: string; data: object }) => productService.updateDeal(id, data),
+        mutationFn: async ({ id, data }: { id: string; data: any }) => {
+            const { _deactivateIds, ...payload } = data
+            if (_deactivateIds?.length) {
+                await Promise.all((_deactivateIds as string[]).map(did => productService.updateDeal(did, { is_active: false })))
+            }
+            return productService.updateDeal(id, payload)
+        },
         onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin', 'deals'] }); setEditDeal(null); toast.success('Deal updated') },
-        onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update deal'),
+        onError: (err: any) => {
+            const detail = err.response?.data?.detail
+            const msg = Array.isArray(detail) ? detail[0]?.msg || 'Validation error' : detail || 'Failed to update deal'
+            toast.error(msg)
+        },
     })
 
     const toggleMutation = useMutation({
@@ -259,7 +498,7 @@ export default function AdminDeals() {
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-900">Deals & Offers</h1>
+                <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Deals & Offers</h1>
                 <button onClick={() => { setShowCreate(v => !v); setEditDeal(null) }} className="btn-primary text-sm">
                     {showCreate ? '✕ Cancel' : '+ Create Deal'}
                 </button>
@@ -267,10 +506,11 @@ export default function AdminDeals() {
 
             {showCreate && (
                 <div className="card space-y-4">
-                    <h2 className="font-semibold text-gray-900">New Deal</h2>
+                    <h2 className="font-semibold text-surface-900 dark:text-white">New Deal</h2>
                     <DealForm
                         categories={categories as Category[]}
                         products={products}
+                        existingDeals={deals ?? []}
                         onSubmit={data => createMutation.mutate(data)}
                         onCancel={() => setShowCreate(false)}
                         isSubmitting={createMutation.isPending}
@@ -281,9 +521,9 @@ export default function AdminDeals() {
 
             {/* Edit modal */}
             {editDeal && (
-                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setEditDeal(null)}>
-                    <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto space-y-4" onClick={e => e.stopPropagation()}>
-                        <h2 className="font-semibold text-gray-900 text-lg">Edit Deal</h2>
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setEditDeal(null)}>
+                    <div className="bg-white dark:bg-surface-900 rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto space-y-4" onClick={e => e.stopPropagation()}>
+                        <h2 className="font-semibold text-surface-900 dark:text-white text-lg">Edit Deal</h2>
                         <DealForm
                             key={editDeal.deal_id}
                             defaultValues={{
@@ -302,6 +542,8 @@ export default function AdminDeals() {
                             }}
                             categories={categories as Category[]}
                             products={products}
+                            existingDeals={deals ?? []}
+                            editingDealId={editDeal.deal_id}
                             onSubmit={data => updateMutation.mutate({ id: editDeal.deal_id, data })}
                             onCancel={() => setEditDeal(null)}
                             isSubmitting={updateMutation.isPending}
@@ -316,8 +558,8 @@ export default function AdminDeals() {
                     <div key={deal.deal_id} className="card">
                         <div className="flex items-start justify-between">
                             <div className="flex-1 min-w-0">
-                                <h3 className="font-semibold text-gray-900">{deal.name}</h3>
-                                <p className="text-sm text-gray-500 mt-1">
+                                <h3 className="font-semibold text-surface-900 dark:text-white">{deal.name}</h3>
+                                <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
                                     {deal.deal_type.replace(/_/g, ' ')} · {deal.applies_to.replace(/_/g, ' ')}
                                     {deal.applies_to === 'specific_category' && deal.category_ids?.length
                                         ? ` (${deal.category_ids.length} categor${deal.category_ids.length === 1 ? 'y' : 'ies'})`
@@ -327,11 +569,11 @@ export default function AdminDeals() {
                                         : ''}
                                 </p>
                                 {deal.discount_value && (
-                                    <p className="text-sm text-gray-700 mt-1">
-                                        Discount: {deal.deal_type === 'percentage_discount' ? `${deal.discount_value}%` : `₹${deal.discount_value}`}
+                                    <p className="text-sm text-surface-700 dark:text-surface-300 mt-1">
+                                        Discount: {deal.deal_type === 'percentage' ? `${deal.discount_value}%` : deal.deal_type === 'free_shipping' ? 'Free shipping' : `₹${deal.discount_value}`}
                                     </p>
                                 )}
-                                <p className="text-xs text-gray-400 mt-1">
+                                <p className="text-xs text-surface-400 mt-1">
                                     {new Date(deal.start_datetime).toLocaleDateString('en-IN')} → {new Date(deal.end_datetime).toLocaleDateString('en-IN')}
                                     · {deal.current_uses}{deal.max_uses ? `/${deal.max_uses}` : ''} uses
                                 </p>
@@ -339,13 +581,13 @@ export default function AdminDeals() {
                             <div className="flex items-center gap-3 shrink-0 ml-3">
                                 <button
                                     onClick={() => { setEditDeal(deal); setShowCreate(false) }}
-                                    className="text-sm text-blue-600 hover:underline"
+                                    className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-600 transition-colors"
                                 >
                                     Edit
                                 </button>
                                 <button
                                     onClick={() => toggleMutation.mutate({ id: deal.deal_id, is_active: !deal.is_active })}
-                                    className={`relative inline-flex h-5 w-9 rounded-full transition-colors ${deal.is_active ? 'bg-blue-600' : 'bg-gray-300'}`}
+                                    className={`relative inline-flex h-5 w-9 rounded-full transition-colors ${deal.is_active ? 'bg-primary-600' : 'bg-gray-300'}`}
                                 >
                                     <span className={`inline-block h-4 w-4 rounded-full bg-white shadow mt-0.5 transition-transform ${deal.is_active ? 'translate-x-4' : 'translate-x-0.5'}`} />
                                 </button>
@@ -358,11 +600,11 @@ export default function AdminDeals() {
                             </div>
                         </div>
                         {deal.staff_visible && (
-                            <span className="badge bg-purple-100 text-purple-700 mt-2 inline-block">Staff visible</span>
+                            <span className="badge bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 mt-2 inline-block">Staff visible</span>
                         )}
                     </div>
                 ))}
-                {deals?.length === 0 && <p className="text-gray-400 text-sm py-8 text-center">No deals yet.</p>}
+                {deals?.length === 0 && <p className="text-surface-400 text-sm py-8 text-center">No deals yet.</p>}
             </div>
         </div>
     )

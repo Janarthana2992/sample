@@ -132,6 +132,7 @@ async def filter_products(payload: FilterRequest, db: AsyncSession = Depends(get
         "max_price": payload.max_price,
         "min_rating": payload.min_rating,
         "in_stock_only": payload.in_stock_only,
+        "deals_only": payload.deals_only,
     }
     result = await es_service.search(
         query=payload.q, page=payload.page, size=payload.size, filters=filters

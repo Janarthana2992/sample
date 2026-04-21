@@ -10,6 +10,9 @@ export const productService = {
     listFeatured: (page = 1, size = 8) =>
         productClient.get<Paginated<Product>>('/products/featured', { params: { page, size } }).then(r => r.data),
 
+    listPromoted: (page = 1, size = 20) =>
+        productClient.get<Paginated<Product>>('/products', { params: { is_promoted: true, is_active: true, page, size } }).then(r => r.data),
+
     get: (id: string) => productClient.get<Product>(`/products/${id}`).then(r => r.data),
 
     create: (formData: FormData) =>
@@ -23,6 +26,15 @@ export const productService = {
 
     delete: (id: string) => productClient.delete(`/products/${id}`),
 
+    addImages: (id: string, files: File[]) => {
+        const fd = new FormData()
+        files.forEach(f => fd.append('images', f))
+        return productClient.post<import('../types').Product>(`/products/${id}/images`, fd).then(r => r.data)
+    },
+
+    deleteImage: (productId: string, imageId: string) =>
+        productClient.delete(`/products/${productId}/images/${imageId}`),
+
     // Bulk import / export
     exportProductsCsv: () =>
         productClient.get('/products/export/csv', { responseType: 'blob' }).then(r => r.data),
@@ -34,9 +46,9 @@ export const productService = {
             '/products/import/csv', fd).then(r => r.data)
     },
 
-    // Low-stock shortcut for staff dashboard
+    // Low-stock: fetch both low_stock + out_of_stock, sorted by qty asc
     getLowStock: () =>
-        productClient.get<Product[]>('/products', { params: { stock_status: 'low_stock', size: 100, is_active: true } }).then(r => (r.data as any).items ?? r.data),
+        productClient.get<Product[]>('/products/low-stock', { params: { size: 100 } }).then(r => r.data),
 
     getProducts: (params?: Record<string, unknown>) =>
         productClient.get<Paginated<Product>>('/products', { params }).then(r => r.data),

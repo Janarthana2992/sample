@@ -14,6 +14,8 @@ from app.config import settings
 from app.models.product import Product, ProductCategory, ProductImage, Category, Deal, DealCategory, DealSku, Review
 from app.schemas.product import ProductCreate, ProductUpdate, StockUpdate
 from app.services.search_service import es_service
+from app.services.kafka_producer import publish_product_event
+from app.utils.distributed_lock import distributed_lock
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +26,7 @@ MAX_IMAGES = 8
 def _compute_stock_status(qty: int) -> str:
     if qty == 0:
         return "out_of_stock"
-    if qty <= 10:
+    if qty <= settings.LOW_STOCK_THRESHOLD:
         return "low_stock"
     return "in_stock"
 
@@ -95,6 +97,13 @@ async def _save_image(file: UploadFile, product_id: uuid.UUID) -> str:
 async def create_product(
     db: AsyncSession, payload: ProductCreate, images: List[UploadFile], created_by: uuid.UUID
 ) -> Product:
+    async with distributed_lock(f"product:sku:{payload.sku.upper()}"):
+        return await _create_product_inner(db, payload, images, created_by)
+
+
+async def _create_product_inner(
+    db: AsyncSession, payload: ProductCreate, images: List[UploadFile], created_by: uuid.UUID
+) -> Product:
     # Validate categories exist
     result = await db.execute(
         select(Category).where(Category.category_id.in_(payload.category_ids))
@@ -143,14 +152,14 @@ async def create_product(
     await db.commit()
     await db.refresh(product, ["images", "product_categories"])
 
-    # Async ES index (fire & forget pattern — errors logged)
-    await _index_to_es(product, [c.category_id for c in found_cats], [c.name for c in found_cats])
-    await _embed_to_ai(product)
+    # Publish event via Kafka (falls back to direct ES + AI indexing)
+    await _publish_create_event(product, [c.category_id for c in found_cats], [c.name for c in found_cats])
     return product
 
 
 async def _embed_to_ai(product: Product):
-    """Fire-and-forget: send product text to AI service for FAISS indexing."""
+    """Fire-and-forget: send product text to AI service for FAISS indexing.
+    Used as direct fallback when Kafka is unavailable."""
     try:
         import httpx as _httpx
         async with _httpx.AsyncClient(timeout=10.0) as client:
@@ -168,9 +177,10 @@ async def _embed_to_ai(product: Product):
         logger.warning("AI embed failed for %s: %s", product.product_id, exc)
 
 
-async def _index_to_es(product: Product, category_ids: list, category_names: list = []):
+def _build_es_doc(product: Product, category_ids: list, category_names: list = []) -> dict:
+    """Build the Elasticsearch document for a product."""
     images = product.images or []
-    doc = {
+    return {
         "product_id": str(product.product_id),
         "name": product.name,
         "description": product.description,
@@ -192,7 +202,44 @@ async def _index_to_es(product: Product, category_ids: list, category_names: lis
         "review_count": product.review_count or 0,
         "bayesian_rating": float(product.bayesian_rating) if product.bayesian_rating else 0,
     }
-    await es_service.index_product(doc)
+
+
+async def _index_to_es(product: Product, category_ids: list, category_names: list = []):
+    """Index product to ES — tries Kafka first, falls back to direct."""
+    doc = _build_es_doc(product, category_ids, category_names)
+    published = await publish_product_event("product_updated", {
+        "product_id": str(product.product_id),
+        "name": product.name,
+        "description": product.description or "",
+        "es_doc": doc,
+    })
+    if not published:
+        # Direct fallback when Kafka is unavailable
+        await es_service.index_product(doc)
+        await _embed_to_ai(product)
+
+
+async def _publish_create_event(product: Product, category_ids: list, category_names: list = []):
+    """Publish product_created event — tries Kafka first, falls back to direct."""
+    doc = _build_es_doc(product, category_ids, category_names)
+    published = await publish_product_event("product_created", {
+        "product_id": str(product.product_id),
+        "name": product.name,
+        "description": product.description or "",
+        "es_doc": doc,
+    })
+    if not published:
+        await es_service.index_product(doc)
+        await _embed_to_ai(product)
+
+
+async def _publish_delete_event(product_id: str):
+    """Publish product_deleted event — tries Kafka first, falls back to direct."""
+    published = await publish_product_event("product_deleted", {
+        "product_id": product_id,
+    })
+    if not published:
+        await es_service.delete_product(product_id)
 
 
 async def list_featured_products(db: AsyncSession, page: int = 1, size: int = 8) -> dict:
@@ -353,7 +400,7 @@ async def list_products(
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
 ) -> dict:
-    query = select(Product).options(selectinload(Product.images))
+    query = select(Product).options(selectinload(Product.images), selectinload(Product.product_categories))
 
     if category_id:
         query = query.join(ProductCategory, ProductCategory.product_id == Product.product_id).where(
@@ -379,66 +426,128 @@ async def list_products(
     return {"items": products, "total": total, "page": page, "size": size}
 
 
+async def list_low_stock_products(db: AsyncSession, size: int = 100) -> list:
+    """Returns low_stock and out_of_stock products sorted by stock_quantity ASC."""
+    from sqlalchemy.orm import selectinload as _sel
+    query = (
+        select(Product)
+        .options(_sel(Product.images))
+        .where(Product.stock_status.in_(["low_stock", "out_of_stock"]))
+        .where(Product.is_active == True)
+        .order_by(Product.stock_quantity.asc())
+        .limit(size)
+    )
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
 async def update_product(
     db: AsyncSession, product_id: uuid.UUID, payload: ProductUpdate
 ) -> Product:
-    product = await get_product(db, product_id)
-    update_data = payload.model_dump(exclude_unset=True)
+    async with distributed_lock(f"product:{product_id}"):
+        product = await get_product(db, product_id)
+        update_data = payload.model_dump(exclude_unset=True)
 
-    category_ids = update_data.pop("category_ids", None)
+        category_ids = update_data.pop("category_ids", None)
 
-    for key, val in update_data.items():
-        setattr(product, key, val)
+        for key, val in update_data.items():
+            setattr(product, key, val)
 
-    if "stock_quantity" in update_data and "stock_status" not in update_data:
-        product.stock_status = _compute_stock_status(product.stock_quantity)
+        if "stock_quantity" in update_data and "stock_status" not in update_data:
+            product.stock_status = _compute_stock_status(product.stock_quantity)
 
-    product.updated_at = datetime.now(timezone.utc)
+        product.updated_at = datetime.now(timezone.utc)
 
-    if category_ids is not None:
-        await db.execute(
-            delete(ProductCategory).where(ProductCategory.product_id == product_id)
+        if category_ids is not None:
+            await db.execute(
+                delete(ProductCategory).where(ProductCategory.product_id == product_id)
+            )
+            for cid in category_ids:
+                db.add(ProductCategory(product_id=product_id, category_id=cid))
+
+        await db.commit()
+        await db.refresh(product, ["images", "product_categories"])
+        cats = [pc.category_id for pc in product.product_categories]
+        cat_result = await db.execute(
+            select(Category.name).where(Category.category_id.in_(cats))
         )
-        for cid in category_ids:
-            db.add(ProductCategory(product_id=product_id, category_id=cid))
-
-    await db.commit()
-    await db.refresh(product, ["images", "product_categories"])
-    cats = [pc.category_id for pc in product.product_categories]
-    cat_result = await db.execute(
-        select(Category.name).where(Category.category_id.in_(cats))
-    )
-    cat_names = [r[0] for r in cat_result.all()]
-    await _index_to_es(product, cats, cat_names)
-    await _embed_to_ai(product)
-    return product
+        cat_names = [r[0] for r in cat_result.all()]
+        await _index_to_es(product, cats, cat_names)
+        return product
 
 
 async def update_stock(
     db: AsyncSession, product_id: uuid.UUID, payload: StockUpdate
 ) -> Product:
-    product = await get_product(db, product_id)
-    if payload.stock_quantity is not None:
-        product.stock_quantity = payload.stock_quantity
-        if payload.stock_status is None:
-            product.stock_status = _compute_stock_status(payload.stock_quantity)
-    if payload.stock_status is not None:
-        product.stock_status = payload.stock_status
-    product.updated_at = datetime.now(timezone.utc)
-    await db.commit()
-    await db.refresh(product, ["images", "product_categories"])
-    cats = [pc.category_id for pc in product.product_categories]
-    cat_result = await db.execute(
-        select(Category.name).where(Category.category_id.in_(cats))
-    )
-    cat_names = [r[0] for r in cat_result.all()]
-    await _index_to_es(product, cats, cat_names)
-    return product
+    async with distributed_lock(f"product:{product_id}"):
+        product = await get_product(db, product_id)
+        if payload.stock_quantity is not None:
+            product.stock_quantity = payload.stock_quantity
+            if payload.stock_status is None:
+                product.stock_status = _compute_stock_status(payload.stock_quantity)
+        if payload.stock_status is not None:
+            product.stock_status = payload.stock_status
+        product.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(product, ["images", "product_categories"])
+        cats = [pc.category_id for pc in product.product_categories]
+        cat_result = await db.execute(
+            select(Category.name).where(Category.category_id.in_(cats))
+        )
+        cat_names = [r[0] for r in cat_result.all()]
+        await _index_to_es(product, cats, cat_names)
+        return product
 
 
 async def soft_delete_product(db: AsyncSession, product_id: uuid.UUID):
+    async with distributed_lock(f"product:{product_id}"):
+        product = await get_product(db, product_id)
+        product.is_active = False
+        product.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        await _publish_delete_event(str(product_id))
+
+
+async def add_product_images(db: AsyncSession, product_id: uuid.UUID, images: list) -> Product:
+    """Add images to an existing product (max 8 total)."""
     product = await get_product(db, product_id)
-    product.is_active = False
-    product.updated_at = datetime.now(timezone.utc)
+    current_count = len(product.images)
+    if current_count + len(images) > MAX_IMAGES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Cannot add {len(images)} images: would exceed {MAX_IMAGES} total (currently {current_count})",
+        )
+    next_order = current_count
+    for img_file in images:
+        url = await _save_image(img_file, product_id)
+        db.add(ProductImage(product_id=product_id, url=url, sort_order=next_order))
+        next_order += 1
     await db.commit()
-    await es_service.delete_product(str(product_id))
+    await db.refresh(product, ["images", "product_categories"])
+    return product
+
+
+async def delete_product_image(db: AsyncSession, product_id: uuid.UUID, image_id: uuid.UUID):
+    """Delete a single image from a product. Keeps at least 0 images."""
+    result = await db.execute(
+        select(ProductImage).where(
+            ProductImage.image_id == image_id,
+            ProductImage.product_id == product_id,
+        )
+    )
+    image = result.scalar_one_or_none()
+    if not image:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+    # Remove file from disk (best-effort)
+    try:
+        import re
+        path_match = re.search(r"/static/products/(.+)", image.url)
+        if path_match:
+            file_path = os.path.join(settings.UPLOAD_DIR, path_match.group(1))
+            if os.path.exists(file_path):
+                os.remove(file_path)
+    except Exception:
+        pass
+    await db.delete(image)
+    await db.commit()
+

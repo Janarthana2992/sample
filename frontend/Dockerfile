@@ -8,20 +8,19 @@ RUN npm install
 
 COPY . .
 
-# Receive Vite build-time env vars as Docker build args (must match docker-compose args)
+# Optional: override API base URLs at build time (e.g. to point at a remote server).
+# If not provided, the app defaults to relative /api/* paths which Nginx proxies.
 ARG VITE_AUTH_SERVICE_URL
 ARG VITE_PRODUCT_SERVICE_URL
 ARG VITE_CART_SERVICE_URL
 ARG VITE_ORDER_SERVICE_URL
 ARG VITE_AI_SERVICE_URL
-ARG VITE_GOOGLE_MAPS_API_KEY
 
-ENV VITE_AUTH_SERVICE_URL=$VITE_AUTH_SERVICE_URL
-ENV VITE_PRODUCT_SERVICE_URL=$VITE_PRODUCT_SERVICE_URL
-ENV VITE_CART_SERVICE_URL=$VITE_CART_SERVICE_URL
-ENV VITE_ORDER_SERVICE_URL=$VITE_ORDER_SERVICE_URL
-ENV VITE_AI_SERVICE_URL=$VITE_AI_SERVICE_URL
-ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
+ENV VITE_AUTH_SERVICE_URL=${VITE_AUTH_SERVICE_URL}
+ENV VITE_PRODUCT_SERVICE_URL=${VITE_PRODUCT_SERVICE_URL}
+ENV VITE_CART_SERVICE_URL=${VITE_CART_SERVICE_URL}
+ENV VITE_ORDER_SERVICE_URL=${VITE_ORDER_SERVICE_URL}
+ENV VITE_AI_SERVICE_URL=${VITE_AI_SERVICE_URL}
 
 RUN npm run build
 
@@ -41,11 +40,10 @@ RUN printf 'server {\n\
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml image/svg+xml;\n\
     \n\
     location ^~ /static/products/ {\n\
-    proxy_pass http://product_service:8002/static/products/;\n\
-    proxy_set_header Host $host;\n\
-    proxy_cache_bypass 1;\n\
+    alias /usr/share/nginx/product_uploads/;\n\
     expires 30d;\n\
     add_header Cache-Control "public";\n\
+    try_files $uri =404;\n\
     }\n\
     \n\
     location / {\n\

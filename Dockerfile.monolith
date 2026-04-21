@@ -1,0 +1,74 @@
+# ─── Stage 1: Build React frontend ───────────────────────────────────────────
+FROM node:20-alpine AS frontend-builder
+WORKDIR /build
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ .
+RUN npm run build
+
+# ─── Stage 2: Monolith runtime ────────────────────────────────────────────────
+FROM python:3.11-slim
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential libpq-dev cmake \
+    nginx supervisor curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Nginx setup ──
+COPY nginx/nginx.monolith.conf /etc/nginx/conf.d/default.conf
+# Remove the default site that ships with nginx
+RUN rm -f /etc/nginx/sites-enabled/default
+
+# ── Frontend static files ──
+COPY --from=frontend-builder /build/dist /usr/share/nginx/html
+
+# ── Python: install CPU-only PyTorch first (avoids pulling 3 GB CUDA builds) ──
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# ── Python: install all service requirements ──
+COPY backend/auth_service/requirements.txt    /req/auth.txt
+COPY backend/product_service/requirements.txt /req/product.txt
+COPY backend/cart_service/requirements.txt    /req/cart.txt
+COPY backend/order_service/requirements.txt   /req/order.txt
+COPY backend/ai_service/requirements.txt      /req/ai.txt
+
+RUN pip install --no-cache-dir \
+    -r /req/auth.txt \
+    -r /req/product.txt \
+    -r /req/cart.txt \
+    -r /req/order.txt \
+    -r /req/ai.txt
+
+# ── Copy each service's app code ──
+COPY backend/auth_service/app    /services/auth_service/app
+COPY backend/product_service/app /services/product_service/app
+COPY backend/cart_service/app    /services/cart_service/app
+COPY backend/order_service/app   /services/order_service/app
+COPY backend/ai_service/app      /services/ai_service/app
+
+# ── Persistent data directories ──
+RUN mkdir -p /data/uploads /data/faiss_store /var/log/supervisor
+
+# ── Supervisord config ──
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# ── Default ENV: inter-service URLs point to localhost ──
+ENV AUTH_SERVICE_URL=http://127.0.0.1:8001
+ENV PRODUCT_SERVICE_URL=http://127.0.0.1:8002
+ENV CART_SERVICE_URL=http://127.0.0.1:8003
+ENV ORDER_SERVICE_URL=http://127.0.0.1:8004
+ENV AI_SERVICE_URL=http://127.0.0.1:8005
+ENV UPLOAD_DIR=/data/uploads
+ENV FAISS_INDEX_PATH=/data/faiss_store
+ENV LLAMACPP_BASE_URL=http://host-gateway:8080
+ENV LLAMACPP_MODEL=local
+ENV MODEL_NAME=all-MiniLM-L6-v2
+ENV ENVIRONMENT=production
+
+EXPOSE 80
+
+# ── Volumes for persistent data ──
+VOLUME ["/data/uploads", "/data/faiss_store"]
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

@@ -38,6 +38,10 @@ _CART_KEYWORDS = re.compile(
     r"\b(cart|basket|bag|add\s*to\s*cart|checkout)\b", re.I
 )
 
+_WISHLIST_KEYWORDS = re.compile(
+    r"\b(wishlist|wish\s*list|saved\s*items?|save\s*for\s*later|saved\s*for\s*later|favourites?|favorites?)\b", re.I
+)
+
 _ADDRESS_KEYWORDS = re.compile(
     r"\b(address|addresses|delivery\s*address|saved\s*address|shipping\s*address)\b", re.I
 )
@@ -124,7 +128,15 @@ def route_intent(message: str) -> RoutedIntent:
             extracted={},
         )
 
-    # 7. Cart-related
+    # 7. Wishlist-related
+    if _WISHLIST_KEYWORDS.search(text):
+        return RoutedIntent(
+            intent="wishlist",
+            confidence=0.80,
+            extracted={},
+        )
+
+    # 8. Cart-related
     if _CART_KEYWORDS.search(text):
         return RoutedIntent(
             intent="cart",
@@ -132,7 +144,7 @@ def route_intent(message: str) -> RoutedIntent:
             extracted={},
         )
 
-    # 8. Recommendation requests
+    # 9. Recommendation requests
     if _RECOMMEND_KEYWORDS.search(text):
         return RoutedIntent(
             intent="recommend",

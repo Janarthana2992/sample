@@ -32,11 +32,11 @@ export default function StaffOrders() {
 
     return (
         <div className="space-y-6">
-            <h1 className="text-2xl font-bold text-gray-900">Confirmed Orders</h1>
+            <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Confirmed Orders</h1>
 
             {selectedOrder && (
-                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setSelectedOrder(null)}>
-                    <div className="bg-white rounded-xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setSelectedOrder(null)}>
+                    <div className="bg-white dark:bg-surface-900 rounded-2xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
                         <h2 className="font-semibold text-lg">Dispatch Order #{selectedOrder.order_id.slice(0, 8)}</h2>
                         <form onSubmit={handleSubmit(d => dispatchMutation.mutate({ orderId: selectedOrder.order_id, tracking_number: d.tracking_number }))} className="space-y-4">
                             <div>
@@ -54,27 +54,27 @@ export default function StaffOrders() {
                 </div>
             )}
 
-            <div className="overflow-x-auto rounded-xl border border-gray-200">
+            <div className="overflow-x-auto rounded-2xl border border-surface-200 dark:border-surface-700">
                 <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-surface-50 dark:bg-surface-800">
                         <tr>
                             {['Order ID', 'Customer', 'Amount', 'Items', 'Date', 'Actions'].map(h => (
-                                <th key={h} className="px-4 py-3 text-left font-semibold text-gray-600">{h}</th>
+                                <th key={h} className="px-4 py-3 text-left font-semibold text-surface-600 dark:text-surface-400">{h}</th>
                             ))}
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
                         {data?.items?.map((order: any) => (
-                            <tr key={order.order_id} className="hover:bg-gray-50">
+                            <tr key={order.order_id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50">
                                 <td className="px-4 py-3 font-mono text-xs">{order.order_id.slice(0, 8)}</td>
                                 <td className="px-4 py-3">{order.user_id}</td>
                                 <td className="px-4 py-3 font-semibold">₹{Number(order.total_amount).toLocaleString('en-IN')}</td>
                                 <td className="px-4 py-3">{order.order_items?.length ?? '—'} items</td>
-                                <td className="px-4 py-3 text-gray-500">{new Date(order.created_at).toLocaleDateString('en-IN')}</td>
+                                <td className="px-4 py-3 text-surface-500 dark:text-surface-400">{new Date(order.created_at).toLocaleDateString('en-IN')}</td>
                                 <td className="px-4 py-3">
                                     <button
                                         onClick={() => setSelectedOrder(order)}
-                                        className="text-sm text-blue-600 hover:underline"
+                                        className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-600 transition-colors"
                                     >
                                         Dispatch
                                     </button>
@@ -82,7 +82,7 @@ export default function StaffOrders() {
                             </tr>
                         ))}
                         {!data?.items?.length && (
-                            <tr><td colSpan={6} className="text-center py-10 text-gray-400">No confirmed orders</td></tr>
+                            <tr><td colSpan={6} className="text-center py-10 text-surface-400">No confirmed orders</td></tr>
                         )}
                     </tbody>
                 </table>
@@ -90,7 +90,7 @@ export default function StaffOrders() {
 
             <div className="flex items-center justify-between">
                 <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="btn-secondary text-sm disabled:opacity-50">← Prev</button>
-                <span className="text-sm text-gray-500">Page {page} of {data ? Math.ceil(data.total / 20) : 1}</span>
+                <span className="text-sm text-surface-500 dark:text-surface-400">Page {page} of {data ? Math.ceil(data.total / 20) : 1}</span>
                 <button disabled={page >= (data ? Math.ceil(data.total / 20) : 1)} onClick={() => setPage(p => p + 1)} className="btn-secondary text-sm disabled:opacity-50">Next →</button>
             </div>
         </div>

@@ -38,6 +38,7 @@ PRODUCT_MAPPING = {
 
 class ElasticsearchService:
     def __init__(self):
+        self.index_name = INDEX_NAME
         if settings.ES_API_KEY:
             # Elastic Cloud
             self.client = AsyncElasticsearch(
@@ -118,6 +119,10 @@ class ElasticsearchService:
             if filters.get("in_stock_only"):
                 must_clauses.append(
                     {"terms": {"stock_status": ["in_stock", "low_stock"]}}
+                )
+            if filters.get("deals_only"):
+                must_clauses.append(
+                    {"script": {"script": "doc['mrp'].value > doc['selling_price'].value"}}
                 )
 
         es_query: Dict[str, Any] = {

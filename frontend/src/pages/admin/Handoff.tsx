@@ -155,24 +155,24 @@ export default function Handoff() {
             {/* Left panel — Queue + My tickets */}
             <div className="w-80 flex-shrink-0 flex flex-col gap-4 overflow-y-auto">
                 {/* Waiting queue */}
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-4">
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                        🔔 Waiting Queue
+                <div className="bg-white dark:bg-surface-800 rounded-2xl shadow p-4">
+                    <h2 className="text-lg font-bold text-surface-900 dark:text-white mb-3 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-amber-500" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" /></svg> Waiting Queue
                         {queue.length > 0 && (
                             <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{queue.length}</span>
                         )}
                     </h2>
                     {queue.length === 0 ? (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">No customers waiting</p>
+                        <p className="text-sm text-surface-500 dark:text-surface-400">No customers waiting</p>
                     ) : (
                         <div className="space-y-2">
                             {queue.map(t => (
-                                <div key={t.ticket_id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                                <div key={t.ticket_id} className="border border-surface-200 dark:border-surface-700 rounded-lg p-3">
                                     <div className="flex items-center justify-between">
-                                        <span className="font-medium text-sm text-gray-900 dark:text-white">{t.user_name}</span>
-                                        <span className="text-xs text-gray-500">{timeSince(t.created_at)}</span>
+                                        <span className="font-medium text-sm text-surface-900 dark:text-white">{t.user_name}</span>
+                                        <span className="text-xs text-surface-500 dark:text-surface-400">{timeSince(t.created_at)}</span>
                                     </div>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">{t.reason}</p>
+                                    <p className="text-xs text-surface-500 dark:text-surface-400 mt-1 truncate">{t.reason}</p>
                                     <button
                                         onClick={() => handleAccept(t.ticket_id)}
                                         disabled={loading}
@@ -187,10 +187,10 @@ export default function Handoff() {
                 </div>
 
                 {/* My active tickets */}
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-4">
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-3">💬 My Conversations</h2>
+                <div className="bg-white dark:bg-surface-800 rounded-2xl shadow p-4">
+                    <h2 className="text-lg font-bold text-surface-900 dark:text-white mb-3">💬 My Conversations</h2>
                     {myTickets.length === 0 ? (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">No active conversations</p>
+                        <p className="text-sm text-surface-500 dark:text-surface-400">No active conversations</p>
                     ) : (
                         <div className="space-y-2">
                             {myTickets.map(t => (
@@ -198,13 +198,13 @@ export default function Handoff() {
                                     key={t.ticket_id}
                                     className={`border rounded-lg p-3 cursor-pointer transition-colors ${activeTicket === t.ticket_id
                                         ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                                        : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                        : 'border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800/50'
                                         }`}
                                     onClick={() => handleOpenChat(t.ticket_id)}
                                 >
                                     <div className="flex items-center justify-between">
-                                        <span className="font-medium text-sm text-gray-900 dark:text-white">{t.user_name}</span>
-                                        <span className={`text-xs px-1.5 py-0.5 rounded ${t.status === 'assigned' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-gray-100 text-gray-800'
+                                        <span className="font-medium text-sm text-surface-900 dark:text-white">{t.user_name}</span>
+                                        <span className={`text-xs px-1.5 py-0.5 rounded ${t.status === 'assigned' ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-surface-100 dark:bg-surface-800 text-surface-800 dark:text-surface-200'
                                             }`}>{t.status}</span>
                                     </div>
                                     {t.status === 'assigned' && (
@@ -223,9 +223,9 @@ export default function Handoff() {
             </div>
 
             {/* Right panel — Chat */}
-            <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow flex flex-col">
+            <div className="flex-1 bg-white dark:bg-surface-800 rounded-2xl shadow flex flex-col">
                 {!activeTicket ? (
-                    <div className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-500">
+                    <div className="flex-1 flex items-center justify-center text-surface-400 dark:text-surface-500">
                         <div className="text-center">
                             <p className="text-4xl mb-2">💬</p>
                             <p className="text-lg font-medium">Select a conversation</p>
@@ -239,13 +239,13 @@ export default function Handoff() {
                             {messages.map((msg, i) => (
                                 <div key={i} className={`flex ${msg.sender === 'agent' ? 'justify-end' : msg.sender === 'system' ? 'justify-center' : 'justify-start'}`}>
                                     {msg.sender === 'system' ? (
-                                        <div className="bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-xs px-3 py-1 rounded-full">
+                                        <div className="bg-surface-100 dark:bg-surface-700 text-surface-500 dark:text-surface-400 text-xs px-3 py-1 rounded-full">
                                             {msg.content}
                                         </div>
                                     ) : (
                                         <div className={`max-w-[70%] rounded-2xl px-4 py-2 ${msg.sender === 'agent'
                                             ? 'bg-blue-600 text-white rounded-br-md'
-                                            : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-bl-md'
+                                            : 'bg-surface-100 dark:bg-surface-700 text-surface-900 dark:text-surface-100 rounded-bl-md'
                                             }`}>
                                             <div className="text-xs opacity-70 mb-0.5">{msg.sender_name}</div>
                                             <div className="text-sm">{msg.content}</div>
@@ -258,7 +258,7 @@ export default function Handoff() {
                         </div>
 
                         {/* Input */}
-                        <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+                        <div className="p-4 border-t border-surface-200 dark:border-surface-700">
                             <div className="flex gap-2">
                                 <input
                                     type="text"
@@ -266,7 +266,7 @@ export default function Handoff() {
                                     onChange={e => setInput(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && sendMessage()}
                                     placeholder="Type your message..."
-                                    className="flex-1 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-200"
+                                    className="flex-1 rounded-xl border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-surface-200"
                                 />
                                 <button
                                     onClick={sendMessage}

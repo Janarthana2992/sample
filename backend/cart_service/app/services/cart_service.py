@@ -162,3 +162,116 @@ async def get_cart_raw(user_id: str) -> list[dict]:
         item["product_id"] = pid
         result.append(item)
     return result
+
+
+# ── Save for Later (Wishlist) ─────────────────────────────────
+
+def _saved_key(user_id: str) -> str:
+    return f"saved:{user_id}"
+
+
+async def save_for_later(user_id: str, product_id: str) -> dict:
+    """Add a product to the wishlist/saved-for-later list.
+    If the item is in the cart, it is moved; otherwise it is added directly.
+    """
+    redis = await get_redis()
+    cart_key = _cart_key(user_id)
+    saved_key = _saved_key(user_id)
+
+    cart_raw = await redis.hget(cart_key, product_id)
+
+    if cart_raw:
+        # Item is in cart — move it
+        snapshot = CartItemSnapshot(**json.loads(cart_raw))
+        saved_item = {
+            "product_id": product_id,
+            "product_name": snapshot.product_name,
+            "price_snapshot": str(snapshot.price_snapshot),
+            "image_url": snapshot.image_url,
+            "quantity": snapshot.quantity,
+            "added_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await redis.hset(saved_key, product_id, json.dumps(saved_item))
+        await redis.hdel(cart_key, product_id)
+    else:
+        # Direct wishlist add — fetch product details
+        product = await _fetch_product(product_id)
+        if not product:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+        saved_item = {
+            "product_id": product_id,
+            "product_name": product.get("name", ""),
+            "price_snapshot": str(product.get("selling_price", 0)),
+            "image_url": (product.get("images") or [{}])[0].get("url") if product.get("images") else product.get("image_url"),
+            "quantity": 1,
+            "added_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await redis.hset(saved_key, product_id, json.dumps(saved_item))
+
+    return saved_item
+
+
+async def move_to_cart(user_id: str, product_id: str) -> CartItemSnapshot:
+    """Move an item from saved-for-later back into cart."""
+    redis = await get_redis()
+    saved_key = _saved_key(user_id)
+    cart_key = _cart_key(user_id)
+
+    raw = await redis.hget(saved_key, product_id)
+    if not raw:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not in saved list")
+
+    saved = json.loads(raw)
+
+    # Re-fetch product to get fresh stock / price
+    product = await _fetch_product(product_id)
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product no longer exists")
+    if product.get("stock_status") == "out_of_stock":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Product is out of stock")
+
+    qty = min(saved.get("quantity", 1), product.get("stock_quantity", 1))
+    item = CartItemSnapshot(
+        product_id=product_id,
+        quantity=qty,
+        price_snapshot=Decimal(str(product["selling_price"])),
+        product_name=product["name"],
+        image_url=product.get("images", [{}])[0].get("url") if product.get("images") else None,
+        added_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    await redis.hset(cart_key, product_id, json.dumps(item.model_dump(), default=str))
+    await redis.expire(cart_key, settings.CART_TTL_SECONDS)
+    await redis.hdel(saved_key, product_id)
+
+    return item
+
+
+async def get_saved_items(user_id: str) -> list[dict]:
+    """Get all saved-for-later items with current prices."""
+    redis = await get_redis()
+    raw_items = await redis.hgetall(_saved_key(user_id))
+    items = []
+    for product_id, raw in raw_items.items():
+        saved = json.loads(raw)
+        product = await _fetch_product(product_id)
+        current_price = Decimal(str(product.get("selling_price", saved["price_snapshot"]))) if product else Decimal(saved["price_snapshot"])
+        stock_status = product.get("stock_status", "unknown") if product else "unknown"
+        items.append({
+            "product_id": product_id,
+            "product_name": saved["product_name"],
+            "price_snapshot": saved["price_snapshot"],
+            "current_price": str(current_price),
+            "image_url": saved.get("image_url"),
+            "stock_status": stock_status,
+            "added_at": saved["added_at"],
+        })
+    return items
+
+
+async def remove_saved_item(user_id: str, product_id: str):
+    """Remove an item from saved-for-later."""
+    redis = await get_redis()
+    deleted = await redis.hdel(_saved_key(user_id), product_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not in saved list")

@@ -64,6 +64,28 @@ async def clear_cart(user_id: str = Depends(_get_user_id)):
     await cart_service.clear_cart(user_id)
 
 
+# ── Save for Later ───────────────────────────────────────────
+
+@router.post("/save-for-later/{product_id}", status_code=status.HTTP_200_OK)
+async def save_for_later(product_id: uuid.UUID, user_id: str = Depends(_get_user_id)):
+    return await cart_service.save_for_later(user_id, str(product_id))
+
+
+@router.post("/move-to-cart/{product_id}", response_model=CartItemSnapshot, status_code=status.HTTP_200_OK)
+async def move_to_cart(product_id: uuid.UUID, user_id: str = Depends(_get_user_id)):
+    return await cart_service.move_to_cart(user_id, str(product_id))
+
+
+@router.get("/saved", status_code=status.HTTP_200_OK)
+async def get_saved_items(user_id: str = Depends(_get_user_id)):
+    return await cart_service.get_saved_items(user_id)
+
+
+@router.delete("/saved/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_saved_item(product_id: uuid.UUID, user_id: str = Depends(_get_user_id)):
+    await cart_service.remove_saved_item(user_id, str(product_id))
+
+
 # Internal endpoint — used by Order Service post-checkout
 @router.delete("/internal/{user_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["internal"])
 async def clear_cart_internal(
@@ -79,3 +101,15 @@ async def get_cart_raw(
     _=Depends(_require_internal_service_token),
 ):
     return await cart_service.get_cart_raw(str(user_id))
+
+
+@router.delete("/internal/{user_id}/{product_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["internal"])
+async def remove_item_internal(
+    user_id: uuid.UUID,
+    product_id: uuid.UUID,
+    _=Depends(_require_internal_service_token),
+):
+    try:
+        await cart_service.remove_from_cart(str(user_id), str(product_id))
+    except Exception:
+        pass  # best-effort removal

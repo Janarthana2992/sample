@@ -34,7 +34,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 # ---------- JWT ----------
 
-def create_access_token(subject: str, role: str, extra: dict | None = None) -> str:
+def create_access_token(subject: str, role: str, permissions: list | None = None, extra: dict | None = None) -> str:
     payload = {
         "sub": subject,
         "role": role,
@@ -43,6 +43,8 @@ def create_access_token(subject: str, role: str, extra: dict | None = None) -> s
         + timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES),
         "type": "access",
     }
+    if permissions is not None:
+        payload["permissions"] = permissions
     if extra:
         payload.update(extra)
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)

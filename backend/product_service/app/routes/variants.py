@@ -10,6 +10,7 @@ from app.db.database import get_db
 from app.models.product import Product, ProductVariant
 from app.schemas.variant import VariantCreate, VariantOut, VariantUpdate
 from app.utils.rbac import require_roles
+from app.utils.distributed_lock import distributed_lock
 
 router = APIRouter(prefix="/products/{product_id}/variants", tags=["variants"])
 
@@ -39,27 +40,28 @@ async def create_variant(
     _=Depends(require_roles("admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    await _get_product_or_404(product_id, db)
+    async with distributed_lock(f"product:{product_id}"):
+        await _get_product_or_404(product_id, db)
 
-    # Check SKU uniqueness
-    existing = (await db.execute(select(ProductVariant).where(ProductVariant.sku == payload.sku.upper()))).scalar_one_or_none()
-    if existing:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Variant SKU already exists")
+        # Check SKU uniqueness
+        existing = (await db.execute(select(ProductVariant).where(ProductVariant.sku == payload.sku.upper()))).scalar_one_or_none()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Variant SKU already exists")
 
-    variant = ProductVariant(
-        product_id=product_id,
-        sku=payload.sku.upper(),
-        color=payload.color,
-        size=payload.size,
-        stock_quantity=payload.stock_quantity,
-        stock_status=payload.stock_status,
-        price_adjustment=payload.price_adjustment,
-        is_active=payload.is_active,
-    )
-    db.add(variant)
-    await db.commit()
-    await db.refresh(variant)
-    return variant
+        variant = ProductVariant(
+            product_id=product_id,
+            sku=payload.sku.upper(),
+            color=payload.color,
+            size=payload.size,
+            stock_quantity=payload.stock_quantity,
+            stock_status=payload.stock_status,
+            price_adjustment=payload.price_adjustment,
+            is_active=payload.is_active,
+        )
+        db.add(variant)
+        await db.commit()
+        await db.refresh(variant)
+        return variant
 
 
 @router.patch("/{variant_id}", response_model=VariantOut)
@@ -70,22 +72,23 @@ async def update_variant(
     _=Depends(require_roles("admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(ProductVariant).where(
-            ProductVariant.variant_id == variant_id,
-            ProductVariant.product_id == product_id,
+    async with distributed_lock(f"product:{product_id}"):
+        result = await db.execute(
+            select(ProductVariant).where(
+                ProductVariant.variant_id == variant_id,
+                ProductVariant.product_id == product_id,
+            )
         )
-    )
-    variant = result.scalar_one_or_none()
-    if not variant:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Variant not found")
+        variant = result.scalar_one_or_none()
+        if not variant:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Variant not found")
 
-    for k, v in payload.model_dump(exclude_none=True).items():
-        setattr(variant, k, v)
-    variant.updated_at = datetime.now(timezone.utc)
-    await db.commit()
-    await db.refresh(variant)
-    return variant
+        for k, v in payload.model_dump(exclude_none=True).items():
+            setattr(variant, k, v)
+        variant.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(variant)
+        return variant
 
 
 @router.delete("/{variant_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -95,14 +98,15 @@ async def delete_variant(
     _=Depends(require_roles("admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(ProductVariant).where(
-            ProductVariant.variant_id == variant_id,
-            ProductVariant.product_id == product_id,
+    async with distributed_lock(f"product:{product_id}"):
+        result = await db.execute(
+            select(ProductVariant).where(
+                ProductVariant.variant_id == variant_id,
+                ProductVariant.product_id == product_id,
+            )
         )
-    )
-    variant = result.scalar_one_or_none()
-    if not variant:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Variant not found")
-    await db.delete(variant)
-    await db.commit()
+        variant = result.scalar_one_or_none()
+        if not variant:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Variant not found")
+        await db.delete(variant)
+        await db.commit()

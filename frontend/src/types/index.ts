@@ -7,6 +7,7 @@ export interface User {
     role: 'admin' | 'staff' | 'customer'
     is_active: boolean
     created_at: string
+    permissions?: Array<{ module: string }>
 }
 
 export interface TokenResponse {
@@ -49,6 +50,7 @@ export interface Product {
     promotion_badge?: string
     sales_count: number
     images: ProductImage[]
+    category_ids?: string[]
     created_at: string
 }
 
@@ -89,6 +91,14 @@ export interface Event {
     created_at: string
 }
 
+export interface ReviewReply {
+    reply_id: string
+    reply_text: string
+    is_retracted: boolean
+    created_at: string
+    updated_at?: string
+}
+
 export interface Review {
     review_id: string
     product_id: string
@@ -100,14 +110,6 @@ export interface Review {
     created_at: string
     updated_at?: string
     reply?: ReviewReply
-}
-
-export interface ReviewReply {
-    reply_id: string
-    reply_text: string
-    is_retracted: boolean
-    created_at: string
-    updated_at?: string
 }
 
 // ─── Product Variants ────────────────────────────────────────
@@ -155,6 +157,8 @@ export interface Address {
     state: string
     pincode: string
     country: string
+    latitude?: number
+    longitude?: number
     is_default: boolean
 }
 
@@ -178,6 +182,8 @@ export interface Order {
     estimated_delivery?: string
     razorpay_order_id?: string
     razorpay_payment_id?: string
+    cancel_reason?: string
+    return_reason?: string
     items: OrderItem[]
     shipping_address?: Address
     status_history: StatusHistory[]
@@ -208,6 +214,7 @@ export interface SearchHit {
     selling_price: number
     stock_status: string
     rating?: number
+    review_count?: number
     image_url?: string
     score: number
 }

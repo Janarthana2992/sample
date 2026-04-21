@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import { productService } from '../../services/products'
 import { aiClient } from '../../services/api'
 import { ProductCard } from '../../components/common/ProductCard'
-import { LoadingSpinner } from '../../components/common/LoadingSpinner'
+import { AnimatedPage, FadeInView } from '../../components/common/AnimatedPage'
+import { ProductGridSkeleton } from '../../components/common/Skeleton'
 import { useAuthStore } from '../../store/authStore'
 import { getViewedProducts } from './ProductDetail'
 
@@ -25,9 +27,6 @@ type RecommendationCardItem = {
     image_url?: string
     stock_status?: string
 }
-
-const FEATURED_PAGE_SIZE = 8
-const FEATURED_ROTATION_MS = 8000
 
 function mixRecommendations(primary: RecommendationCardItem[], secondary: RecommendationCardItem[], limit = 12) {
     const items: RecommendationCardItem[] = []
@@ -52,33 +51,32 @@ export default function Home() {
     const { user } = useAuthStore()
     const recentViews = getViewedProducts()
     const recentSearches = getRecentSearches()
-    const [featuredPage, setFeaturedPage] = useState(1)
 
     const { data: featuredData, isLoading: isFeaturedLoading } = useQuery({
-        queryKey: ['products', 'featured', featuredPage],
-        queryFn: () => productService.listFeatured(featuredPage, FEATURED_PAGE_SIZE),
-        placeholderData: previousData => previousData,
+        queryKey: ['products', 'featured-marquee'],
+        queryFn: () => productService.listFeatured(1, 20),
     })
 
+    const { data: promotedData } = useQuery({
+        queryKey: ['products', 'promoted-marquee'],
+        queryFn: () => productService.listPromoted(1, 30),
+    })
+
+    // Marquee: promoted products only — no fallback to featured
+    const promotedProducts = promotedData?.items ?? []
     const featuredProducts = featuredData?.items ?? []
-    const totalFeaturedPages = Math.max(1, Math.ceil((featuredData?.total ?? 0) / FEATURED_PAGE_SIZE))
+    const marqueeProducts = promotedProducts
 
-    useEffect(() => {
-        setFeaturedPage(currentPage => Math.min(currentPage, totalFeaturedPages))
-    }, [totalFeaturedPages])
-
-    useEffect(() => {
-        if (totalFeaturedPages <= 1) return
-        const rotationId = window.setInterval(() => {
-            setFeaturedPage(currentPage => currentPage >= totalFeaturedPages ? 1 : currentPage + 1)
-        }, FEATURED_ROTATION_MS)
-        return () => window.clearInterval(rotationId)
-    }, [totalFeaturedPages])
+    const { data: categories = [] } = useQuery({
+        queryKey: ['home-categories'],
+        queryFn: () => productService.listCategories(),
+        staleTime: 5 * 60_000,
+    })
+    const activeCategories = (categories as any[]).filter((c: any) => c.is_active)
 
     const { data: recommendations } = useQuery({
         queryKey: ['recommendations', ...recentViews.slice(0, 5), ...recentSearches.slice(0, 3)],
         queryFn: async () => {
-            // Blend recent searches + recently viewed
             const recentSearchTerms = recentSearches.slice(0, 3)
             const searchBasedGroups = await Promise.all(
                 recentSearchTerms.map(async term => {
@@ -126,7 +124,6 @@ export default function Home() {
             const blended = mixRecommendations(searchBased, viewBased, 12)
             if (blended.length > 0) return blended
 
-            // Fallback: trending by sales
             const r = await aiClient.get('/recommend/products', { params: { top_n: 8 } })
             return r.data.items
         },
@@ -134,7 +131,6 @@ export default function Home() {
         gcTime: 60_000,
     })
 
-    // ── Order history-based recommendations (logged-in users) ──
     const { data: orderBasedRecs } = useQuery({
         queryKey: ['order-recommendations', user?.user_id],
         queryFn: async () => {
@@ -142,10 +138,9 @@ export default function Home() {
             return (r.data.items || []) as RecommendationCardItem[]
         },
         enabled: !!user,
-        staleTime: 5 * 60_000,
+        staleTime: 0,
     })
 
-    // ── Category-based picks (logged-in users) ─────────────────
     const { data: categoryPicks } = useQuery({
         queryKey: ['category-picks', user?.user_id],
         queryFn: async () => {
@@ -153,7 +148,7 @@ export default function Home() {
             return r.data as { items: RecommendationCardItem[]; category_affinity?: string[] }
         },
         enabled: !!user,
-        staleTime: 5 * 60_000,
+        staleTime: 0,
     })
 
     const recLabel = (() => {
@@ -164,115 +159,175 @@ export default function Home() {
     })()
 
     const RecCarousel = ({ items, label }: { items: RecommendationCardItem[]; label: string }) => (
-        <section>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">{label}</h2>
-            <div className="flex gap-4 overflow-x-auto pb-2">
-                {items.map((rec) => (
-                    <Link
-                        key={rec.product_id}
-                        to={`/products/${rec.product_id}`}
-                        className="shrink-0 w-44 bg-white rounded-xl border border-gray-200 hover:shadow-md transition-shadow overflow-hidden"
-                    >
-                        <div className="w-full aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
-                            {rec.image_url
-                                ? <img src={rec.image_url} alt={rec.name} className="w-full h-full object-cover" />
-                                : <span className="text-4xl">📦</span>
-                            }
-                        </div>
-                        <div className="p-2">
-                            <p className="text-xs font-semibold text-gray-800 line-clamp-2 leading-snug mb-1">{rec.name || 'View Product'}</p>
-                            {rec.selling_price && (
-                                <div className="flex items-baseline gap-1">
-                                    <span className="text-sm font-bold text-gray-900">₹{Number(rec.selling_price).toLocaleString('en-IN')}</span>
-                                    {rec.mrp && rec.mrp > rec.selling_price && (
-                                        <span className="text-xs text-gray-400 line-through">₹{Number(rec.mrp).toLocaleString('en-IN')}</span>
+        <FadeInView>
+            <section>
+                <h2 className="section-title mb-1">{label}</h2>
+                <p className="section-subtitle mb-5">Curated picks just for you</p>
+                <div className="flex gap-4 overflow-x-auto pb-3 -mx-1 px-1 snap-x snap-mandatory">
+                    {items.map((rec, i) => (
+                        <motion.div
+                            key={rec.product_id}
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.05 }}
+                        >
+                            <Link
+                                to={`/products/${rec.product_id}`}
+                                className="shrink-0 w-44 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 hover:shadow-card-hover transition-all duration-300 overflow-hidden block snap-start group"
+                            >
+                                <div className="w-full aspect-square bg-gray-50 dark:bg-gray-800 flex items-center justify-center overflow-hidden">
+                                    {rec.image_url
+                                        ? <img src={rec.image_url} alt={rec.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                        : <svg className="w-10 h-10 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+                                    }
+                                </div>
+                                <div className="p-3">
+                                    <p className="text-xs font-medium text-gray-800 dark:text-gray-200 line-clamp-2 leading-snug mb-1.5 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">{rec.name || 'View Product'}</p>
+                                    {rec.selling_price && (
+                                        <div className="flex items-baseline gap-1.5">
+                                            <span className="text-sm font-bold text-gray-900 dark:text-white">₹{Number(rec.selling_price).toLocaleString('en-IN')}</span>
+                                            {rec.mrp && rec.mrp > rec.selling_price && (
+                                                <span className="text-[11px] text-gray-400 line-through">₹{Number(rec.mrp).toLocaleString('en-IN')}</span>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
-                            )}
-                        </div>
-                    </Link>
-                ))}
-            </div>
-        </section>
+                            </Link>
+                        </motion.div>
+                    ))}
+                </div>
+            </section>
+        </FadeInView>
     )
 
     return (
-        <div className="space-y-12">
-            {/* Hero */}
-            <section className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl text-white p-10 text-center">
-                <h1 className="text-4xl font-extrabold mb-4">Welcome to ShopHere</h1>
-                <p className="text-blue-100 text-lg mb-6">Discover amazing products at unbeatable prices</p>
-                <Link to="/products" className="inline-block bg-white text-blue-700 font-bold px-8 py-3 rounded-xl hover:bg-blue-50 transition-colors">
-                    Shop Now
-                </Link>
-            </section>
-
-            {/* Order history-based recommendations */}
-            {orderBasedRecs && orderBasedRecs.length > 0 && (
-                <RecCarousel items={orderBasedRecs} label="Based on Your Order History" />
-            )}
-
-            {/* Search & view-based recommendations */}
-            {recommendations && recommendations.length > 0 && (
-                <RecCarousel items={recommendations} label={recLabel} />
-            )}
-
-            {/* Category-based picks */}
-            {categoryPicks && categoryPicks.items.length > 0 && (
-                <RecCarousel
-                    items={categoryPicks.items}
-                    label={
-                        categoryPicks.category_affinity?.length
-                            ? `Popular in ${categoryPicks.category_affinity.slice(0, 2).join(' & ')}`
-                            : 'Popular in Your Categories'
-                    }
-                />
-            )}
-
-            {/* Featured Products */}
-            <section>
-                <div className="flex items-center justify-between mb-4">
-                    <div>
-                        <h2 className="text-xl font-bold text-gray-900">Featured Products</h2>
-                        {totalFeaturedPages > 1 && (
-                            <p className="text-sm text-gray-500 mt-1">Auto-rotating through featured and promoted picks</p>
-                        )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                        {totalFeaturedPages > 1 && (
-                            <div className="flex items-center gap-2 text-sm text-gray-500">
-                                <button
-                                    type="button"
-                                    onClick={() => setFeaturedPage(currentPage => currentPage <= 1 ? totalFeaturedPages : currentPage - 1)}
-                                    className="w-8 h-8 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:text-blue-600 transition-colors"
-                                    aria-label="Show previous featured products"
+        <AnimatedPage>
+            <div className="space-y-14">
+                {/* Hero */}
+                <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary-600 via-primary-700 to-primary-900 text-white">
+                    <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PHBhdGggZD0iTTM2IDM0djZoLTZWMzRoLTR2LTRoNHYtNmg2djZoNHY0aC00eiIvPjwvZz48L2c+PC9zdmc+')] opacity-50" />
+                    <div className="relative px-8 py-16 sm:px-16 sm:py-24 text-center">
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.6 }}
+                        >
+                            <span className="inline-block text-primary-200 text-sm font-semibold tracking-wider uppercase mb-4">Premium Shopping Experience</span>
+                            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold mb-6 tracking-tight leading-tight">
+                                Discover Products<br className="hidden sm:block" /> You'll Love
+                            </h1>
+                            <p className="text-primary-100 text-lg sm:text-xl mb-8 max-w-2xl mx-auto leading-relaxed">
+                                AI-powered recommendations, curated collections, and unbeatable prices — all in one place.
+                            </p>
+                            <div className="flex items-center justify-center gap-4">
+                                <Link
+                                    to="/products"
+                                    className="inline-flex items-center gap-2 bg-white text-primary-700 font-bold px-8 py-3.5 rounded-2xl hover:bg-primary-50 transition-all duration-200 shadow-lg hover:shadow-xl active:scale-[0.98]"
                                 >
-                                    ‹
-                                </button>
-                                <span>Page {featuredPage} of {totalFeaturedPages}</span>
-                                <button
-                                    type="button"
-                                    onClick={() => setFeaturedPage(currentPage => currentPage >= totalFeaturedPages ? 1 : currentPage + 1)}
-                                    className="w-8 h-8 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:text-blue-600 transition-colors"
-                                    aria-label="Show next featured products"
+                                    <span>Shop Now</span>
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                                </Link>
+                                <Link
+                                    to="/events"
+                                    className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm text-white font-semibold px-6 py-3.5 rounded-2xl hover:bg-white/20 border border-white/20 transition-all duration-200"
                                 >
-                                    ›
-                                </button>
+                                    View Events
+                                </Link>
                             </div>
-                        )}
-                        <Link to="/products" className="text-blue-600 text-sm hover:underline">View all →</Link>
+                        </motion.div>
                     </div>
-                </div>
-                {isFeaturedLoading && !featuredData ? (
-                    <LoadingSpinner />
-                ) : featuredProducts.length === 0 ? (
-                    <p className="text-sm text-gray-500">No featured or promoted products are available yet.</p>
-                ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                        {featuredProducts.map(p => <ProductCard key={p.product_id} product={p} />)}
-                    </div>
+                </section>
+
+                {/* Featured / Promoted Products – horizontal scroll */}
+                {marqueeProducts.length > 0 && (
+                    <FadeInView>
+                        <section>
+                            <div className="flex items-end justify-between mb-4">
+                                <div>
+                                    <h2 className="section-title">Featured Products</h2>
+                                    <p className="section-subtitle">Our handpicked top picks</p>
+                                </div>
+                                <Link to="/products" className="text-sm font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors flex items-center gap-1">
+                                    View all
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                                </Link>
+                            </div>
+                            <div className="flex gap-4 overflow-x-auto pb-3 -mx-1 px-1 snap-x snap-mandatory scrollbar-hide">
+                                {marqueeProducts.map((p) => (
+                                    <div key={p.product_id} className="shrink-0 w-52 snap-start">
+                                        <ProductCard product={p} />
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    </FadeInView>
                 )}
-            </section>
-        </div>
+                {isFeaturedLoading && !promotedData && (
+                    <ProductGridSkeleton count={4} />
+                )}
+
+                {/* Quick stats */}
+                <FadeInView>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        {[
+                            { icon: '🚚', label: 'Free Delivery', desc: 'On all orders' },
+                            { icon: '🔒', label: 'Secure Payment', desc: 'Razorpay powered' },
+                            { icon: '🤖', label: 'AI Powered', desc: 'Smart search' },
+                            { icon: '↩️', label: 'Easy Returns', desc: 'Hassle-free' },
+                        ].map(stat => (
+                            <div key={stat.label} className="card-hover text-center py-5">
+                                <span className="text-2xl mb-2 block">{stat.icon}</span>
+                                <p className="text-sm font-semibold text-gray-900 dark:text-white">{stat.label}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">{stat.desc}</p>
+                            </div>
+                        ))}
+                    </div>
+                </FadeInView>
+
+                {/* Browse by Category */}
+                {activeCategories.length > 0 && (
+                    <FadeInView>
+                        <section>
+                            <h2 className="section-title mb-1">Browse by Category</h2>
+                            <p className="section-subtitle mb-5">Find exactly what you're looking for</p>
+                            <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
+                                {activeCategories.map((cat: any) => (
+                                    <Link
+                                        key={cat.category_id}
+                                        to={`/products?q=${encodeURIComponent(cat.name)}`}
+                                        className="shrink-0 snap-start px-5 py-3 rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 hover:border-primary-300 dark:hover:border-primary-600 hover:shadow-card-hover transition-all duration-200 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400"
+                                    >
+                                        {cat.name}
+                                    </Link>
+                                ))}
+                            </div>
+                        </section>
+                    </FadeInView>
+                )}
+
+                {/* Order history-based recommendations */}
+                {orderBasedRecs && orderBasedRecs.length > 0 && (
+                    <RecCarousel items={orderBasedRecs} label="Based on Your Order History" />
+                )}
+
+                {/* Search & view-based recommendations */}
+                {recommendations && recommendations.length > 0 && (
+                    <RecCarousel items={recommendations} label={recLabel} />
+                )}
+
+                {/* Category-based picks */}
+                {categoryPicks && categoryPicks.items.length > 0 && (
+                    <RecCarousel
+                        items={categoryPicks.items}
+                        label={
+                            categoryPicks.category_affinity?.length
+                                ? `Popular in ${categoryPicks.category_affinity.slice(0, 2).join(' & ')}`
+                                : 'Popular in Your Categories'
+                        }
+                    />
+                )}
+
+            </div>
+        </AnimatedPage>
     )
 }

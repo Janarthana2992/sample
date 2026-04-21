@@ -14,11 +14,14 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     INTERNAL_SERVICE_TOKEN: str
+    REDIS_URL: str = "redis://:redis_pass@localhost:6379/2"
+    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
     UPLOAD_DIR: str = "/app/uploads"
     MAX_IMAGE_SIZE_MB: int = 5
     ENVIRONMENT: str = "development"
     FRONTEND_URL: str = "http://localhost:5173"
     AI_SERVICE_URL: str = "http://ai_service:8005"
+    LOW_STOCK_THRESHOLD: int = 10  # qty <= this is considered low_stock
 
     @field_validator("JWT_SECRET_KEY")
     @classmethod

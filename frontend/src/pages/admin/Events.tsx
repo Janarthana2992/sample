@@ -116,7 +116,7 @@ export default function AdminEvents() {
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-900">Events</h1>
+                <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Events</h1>
                 {!showForm && (
                     <button onClick={() => { reset(); setShowForm(true) }} className="btn-primary">
                         + New Event
@@ -127,7 +127,7 @@ export default function AdminEvents() {
             {/* Create / Edit Form */}
             {showForm && (
                 <div className="card space-y-4">
-                    <h2 className="font-semibold text-gray-900">{editing ? 'Edit Event' : 'New Event'}</h2>
+                    <h2 className="font-semibold text-surface-900 dark:text-white">{editing ? 'Edit Event' : 'New Event'}</h2>
                     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
                         <div>
                             <label className="label">Title *</label>
@@ -172,10 +172,10 @@ export default function AdminEvents() {
                                 type="file"
                                 accept="image/jpeg,image/png,image/webp"
                                 onChange={handleImageChange}
-                                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                                className="block w-full text-sm text-surface-500 dark:text-surface-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                             />
                             {preview && (
-                                <img src={preview} alt="preview" className="mt-2 h-40 rounded-lg object-cover border border-gray-200" />
+                                <img src={preview} alt="preview" className="mt-2 h-40 rounded-lg object-cover border border-surface-200 dark:border-surface-700" />
                             )}
                         </div>
 
@@ -183,11 +183,11 @@ export default function AdminEvents() {
                             <button
                                 type="button"
                                 onClick={() => setForm(f => ({ ...f, is_active: !f.is_active }))}
-                                className={`relative inline-flex h-6 w-11 rounded-full transition-colors ${form.is_active ? 'bg-blue-600' : 'bg-gray-300'}`}
+                                className={`relative inline-flex h-6 w-11 rounded-full transition-colors ${form.is_active ? 'bg-primary-600' : 'bg-gray-300'}`}
                             >
                                 <span className={`inline-block h-5 w-5 rounded-full bg-white shadow mt-0.5 transition-transform ${form.is_active ? 'translate-x-5' : 'translate-x-0.5'}`} />
                             </button>
-                            <span className="text-sm font-medium text-gray-700">Visible to customers</span>
+                            <span className="text-sm font-medium text-surface-700 dark:text-surface-300">Visible to customers</span>
                         </label>
 
                         <div className="flex gap-3 pt-2">
@@ -202,9 +202,9 @@ export default function AdminEvents() {
 
             {/* Events List */}
             {isLoading ? (
-                <p className="text-gray-400 text-sm">Loading events...</p>
+                <p className="text-surface-400 text-sm">Loading events...</p>
             ) : !events || events.length === 0 ? (
-                <div className="card text-center py-12 text-gray-400">
+                <div className="card text-center py-12 text-surface-400">
                     <p className="text-4xl mb-3">📅</p>
                     <p className="font-medium">No events yet</p>
                     <p className="text-sm mt-1">Click "New Event" to create your first event post.</p>
@@ -214,7 +214,7 @@ export default function AdminEvents() {
                     {events.map(ev => (
                         <div key={ev.event_id} className="card flex gap-4">
                             {/* Banner */}
-                            <div className="w-36 h-28 shrink-0 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+                            <div className="w-36 h-28 shrink-0 rounded-lg overflow-hidden bg-surface-100 dark:bg-surface-800 flex items-center justify-center">
                                 {ev.image_url
                                     ? <img src={ev.image_url} alt={ev.title} className="w-full h-full object-cover" />
                                     : <span className="text-3xl">📅</span>
@@ -224,19 +224,19 @@ export default function AdminEvents() {
                             {/* Info */}
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-start justify-between gap-2">
-                                    <h3 className="font-semibold text-gray-900 truncate">{ev.title}</h3>
-                                    <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold ${ev.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                    <h3 className="font-semibold text-surface-900 dark:text-white truncate">{ev.title}</h3>
+                                    <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold ${ev.is_active ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-surface-100 dark:bg-surface-800 text-surface-500 dark:text-surface-400'}`}>
                                         {ev.is_active ? 'Active' : 'Hidden'}
                                     </span>
                                 </div>
-                                <p className="text-sm text-gray-600 mt-1 line-clamp-2">{ev.description}</p>
+                                <p className="text-sm text-surface-600 dark:text-surface-400 mt-1 line-clamp-2">{ev.description}</p>
                                 <div className="mt-2 flex items-center gap-4 flex-wrap">
                                     {ev.event_date && (
-                                        <span className="text-xs text-gray-500">
+                                        <span className="text-xs text-surface-500 dark:text-surface-400">
                                             📆 {new Date(ev.event_date).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
                                         </span>
                                     )}
-                                    <a href={ev.register_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline truncate max-w-xs">
+                                    <a href={ev.register_url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-600 transition-colors truncate max-w-xs">
                                         🔗 {ev.register_url}
                                     </a>
                                 </div>

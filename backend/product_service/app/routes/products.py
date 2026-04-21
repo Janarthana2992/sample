@@ -2,13 +2,15 @@ from typing import List, Optional
 import csv
 import io
 import uuid
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db.database import get_db
 from app.schemas.product import (
     FilterRequest, PaginatedProducts, ProductCreate, ProductOut,
@@ -17,6 +19,7 @@ from app.schemas.product import (
 from app.services import product_service, search_service as ss
 from app.utils.rbac import require_roles, require_permission
 from app.models.product import Product, ProductCategory, Category
+from app.utils.distributed_lock import distributed_lock
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -73,6 +76,16 @@ async def create_product(
             detail=exc.errors(),
         ) from exc
     return await product_service.create_product(db, payload, images, admin.user_id)
+
+
+@router.get("/low-stock", response_model=List[ProductOut])
+async def list_low_stock(
+    size: int = Query(default=100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(admin_or_staff),
+):
+    """Returns low_stock + out_of_stock products ordered by stock_quantity ascending."""
+    return await product_service.list_low_stock_products(db, size=size)
 
 
 @router.get("", response_model=PaginatedProducts)
@@ -136,7 +149,30 @@ async def delete_product(
     await product_service.soft_delete_product(db, product_id)
 
 
-# ── Bulk Export ─────────────────────────────────────────────
+# ── Image Management ─────────────────────────────────────────
+
+@router.post("/{product_id}/images", response_model=ProductOut)
+async def add_product_images(
+    product_id: uuid.UUID,
+    images: List[UploadFile] = File(...),
+    _=Depends(require_roles("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add one or more images to an existing product."""
+    return await product_service.add_product_images(db, product_id, images)
+
+
+@router.delete("/{product_id}/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_product_image(
+    product_id: uuid.UUID,
+    image_id: uuid.UUID,
+    _=Depends(require_roles("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a single image from a product."""
+    await product_service.delete_product_image(db, product_id, image_id)
+
+
 
 @router.get("/export/csv")
 async def export_products_csv(
@@ -216,14 +252,15 @@ async def import_products_csv(
 
         existing = (await db.execute(select(Product).where(Product.sku == sku))).scalar_one_or_none()
         if existing:
-            existing.name = row["name"].strip()
-            existing.description = row["description"].strip()
-            existing.mrp = mrp
-            existing.selling_price = selling_price
-            existing.stock_quantity = stock_qty
-            existing.stock_status = stock_status
-            existing.tags = tags
-            existing.is_active = is_active
+            async with distributed_lock(f"product:{existing.product_id}", ttl=5, acquire_timeout=3):
+                existing.name = row["name"].strip()
+                existing.description = row["description"].strip()
+                existing.mrp = mrp
+                existing.selling_price = selling_price
+                existing.stock_quantity = stock_qty
+                existing.stock_status = stock_status
+                existing.tags = tags
+                existing.is_active = is_active
             updated += 1
         else:
             if len(row["name"].strip()) < 3 or len(row["description"].strip()) < 20:
@@ -244,3 +281,52 @@ async def import_products_csv(
 
     await db.commit()
     return {"created": created, "updated": updated, "errors": errors, "error_details": error_list[:20]}
+
+
+# ── Internal: stock adjustment (called by order service) ────
+
+_internal_router = APIRouter(prefix="/internal", tags=["internal"])
+
+
+class StockAdjustItem(BaseModel):
+    product_id: uuid.UUID
+    delta: int  # negative = decrement, positive = restore
+
+
+class StockAdjustRequest(BaseModel):
+    items: list[StockAdjustItem]
+
+
+@_internal_router.post("/stock-adjust", status_code=status.HTTP_204_NO_CONTENT)
+async def internal_adjust_stock(
+    payload: StockAdjustRequest,
+    x_internal_service_token: str = Header(default=None, alias="X-Internal-Service-Token"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk stock adjustment called by the order service. Uses service token auth."""
+    import secrets as _secrets
+    if not x_internal_service_token or not _secrets.compare_digest(
+        x_internal_service_token, settings.INTERNAL_SERVICE_TOKEN
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+    for item in payload.items:
+        result = await db.execute(
+            select(Product).where(Product.product_id == item.product_id)
+        )
+        product = result.scalar_one_or_none()
+        if not product:
+            continue
+        new_qty = max(0, product.stock_quantity + item.delta)
+        product.stock_quantity = new_qty
+        product.stock_status = product_service._compute_stock_status(new_qty)
+        product.updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    # Publish stock_updated events via Kafka (best-effort)
+    for item in payload.items:
+        try:
+            from app.services.kafka_producer import publish_product_event
+            await publish_product_event("stock_updated", {"product_id": str(item.product_id)})
+        except Exception:
+            pass

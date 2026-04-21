@@ -17,13 +17,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     FRONTEND_URL: str = "http://localhost:5173"
     TOP_N: int = 5
-    GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.0-flash"
-    GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
-    LOCAL_MODEL_REPO: str = "Qwen/Qwen2.5-3B-Instruct-GGUF"
-    LOCAL_MODEL_FILE: str = "qwen2.5-3b-instruct-q4_k_m.gguf"
-    REDIS_URL: str = "redis://localhost:6379/1"
+    REDIS_URL: str = "redis://:redis_pass@localhost:6379/1"
     CHAT_SESSION_TTL: int = 1800
 
     @field_validator("JWT_SECRET_KEY")

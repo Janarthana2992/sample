@@ -31,22 +31,22 @@ export default function StaffStock() {
 
     return (
         <div className="space-y-6">
-            <h1 className="text-2xl font-bold text-gray-900">Stock Management</h1>
+            <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Stock Management</h1>
 
-            <div className="overflow-x-auto rounded-xl border border-gray-200">
+            <div className="overflow-x-auto rounded-2xl border border-surface-200 dark:border-surface-700">
                 <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-surface-50 dark:bg-surface-800">
                         <tr>
                             {['Product', 'SKU', 'Current Stock', 'Status', 'Actions'].map(h => (
-                                <th key={h} className="px-4 py-3 text-left font-semibold text-gray-600">{h}</th>
+                                <th key={h} className="px-4 py-3 text-left font-semibold text-surface-600 dark:text-surface-400">{h}</th>
                             ))}
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
                         {data?.items?.map((product: any) => (
-                            <tr key={product.product_id} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 font-medium text-gray-900">{product.name}</td>
-                                <td className="px-4 py-3 font-mono text-xs text-gray-500">{product.sku}</td>
+                            <tr key={product.product_id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50">
+                                <td className="px-4 py-3 font-medium text-surface-900 dark:text-white">{product.name}</td>
+                                <td className="px-4 py-3 font-mono text-xs text-surface-500 dark:text-surface-400">{product.sku}</td>
                                 <td className="px-4 py-3">
                                     {editingId === product.product_id ? (
                                         <input
@@ -70,9 +70,9 @@ export default function StaffStock() {
                                             <option value="out_of_stock">Out of Stock</option>
                                         </select>
                                     ) : (
-                                        <span className={`badge text-xs ${product.stock_status === 'in_stock' ? 'bg-green-100 text-green-700' :
-                                            product.stock_status === 'low_stock' ? 'bg-orange-100 text-orange-700' :
-                                                'bg-red-100 text-red-700'
+                                        <span className={`badge text-xs ${product.stock_status === 'in_stock' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                            product.stock_status === 'low_stock' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                                'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                                             }`}>
                                             {product.stock_status.replace('_', ' ')}
                                         </span>
@@ -84,16 +84,16 @@ export default function StaffStock() {
                                             <button
                                                 onClick={handleSubmit(d => updateMutation.mutate({ id: product.product_id, ...d as any }))}
                                                 disabled={updateMutation.isPending}
-                                                className="text-sm text-green-600 hover:underline"
+                                                className="text-sm text-green-600 hover:text-primary-600 transition-colors"
                                             >
                                                 Save
                                             </button>
-                                            <button onClick={() => { setEditingId(null); reset() }} className="text-sm text-gray-500 hover:underline">
+                                            <button onClick={() => { setEditingId(null); reset() }} className="text-sm text-surface-500 dark:text-surface-400 hover:text-primary-600 transition-colors">
                                                 Cancel
                                             </button>
                                         </div>
                                     ) : (
-                                        <button onClick={() => setEditingId(product.product_id)} className="text-sm text-blue-600 hover:underline">
+                                        <button onClick={() => setEditingId(product.product_id)} className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-600 transition-colors">
                                             Edit
                                         </button>
                                     )}
@@ -101,7 +101,7 @@ export default function StaffStock() {
                             </tr>
                         ))}
                         {!data?.items?.length && (
-                            <tr><td colSpan={5} className="text-center py-10 text-gray-400">No products found</td></tr>
+                            <tr><td colSpan={5} className="text-center py-10 text-surface-400">No products found</td></tr>
                         )}
                     </tbody>
                 </table>

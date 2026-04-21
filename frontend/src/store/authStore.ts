@@ -33,9 +33,7 @@ export const useAuthStore = create<AuthState>()(
                 const user = get().user
                 if (!user) return false
                 if (user.role === 'admin') return true
-                // For staff, we'd decode the JWT or fetch from API
-                // For now trust the user object role field
-                return false
+                return (user.permissions ?? []).some(p => p.module === module)
             },
         }),
         {

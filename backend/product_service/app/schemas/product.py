@@ -3,7 +3,8 @@ from decimal import Decimal
 from typing import List, Optional
 import uuid
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+from app.config import settings
 
 
 # ── Category ────────────────────────────────────────────────
@@ -118,9 +119,29 @@ class ProductOut(BaseModel):
     avg_rating: Optional[Decimal] = None
     review_count: int = 0
     images: List[ProductImageOut] = []
+    category_ids: List[uuid.UUID] = []
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode='after')
+    def sync_stock_status(self) -> 'ProductOut':
+        """Auto-correct stock_status from stock_quantity to prevent stale/inconsistent data."""
+        if self.stock_quantity <= 0:
+            self.stock_status = 'out_of_stock'
+        elif self.stock_quantity <= settings.LOW_STOCK_THRESHOLD and self.stock_status == 'out_of_stock':
+            # qty > 0 but status says out_of_stock — correct it
+            self.stock_status = 'low_stock'
+        elif self.stock_quantity > settings.LOW_STOCK_THRESHOLD and self.stock_status == 'out_of_stock':
+            self.stock_status = 'in_stock'
+        return self
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        instance = super().model_validate(obj, **kwargs)
+        if hasattr(obj, 'product_categories') and obj.product_categories:
+            instance.category_ids = [pc.category_id for pc in obj.product_categories]
+        return instance
 
 
 class ProductListOut(BaseModel):

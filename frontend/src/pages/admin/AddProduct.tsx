@@ -37,6 +37,8 @@ export default function AddProduct() {
         if (!form.selling_price || parseFloat(form.selling_price) <= 0) e.selling_price = 'Selling price must be > 0'
         if (parseFloat(form.selling_price) > parseFloat(form.mrp)) e.selling_price = 'Selling price must be ≤ MRP'
         if (form.category_ids.length === 0) e.category_ids = 'Select at least one category'
+        if (!images || images.length === 0) e.images = 'At least one product image is required'
+        if (!form.stock_quantity || parseInt(form.stock_quantity) < 1) e.stock_quantity = 'Stock must be at least 1 unit'
         setErrors(e)
         return Object.keys(e).length === 0
     }
@@ -87,13 +89,13 @@ export default function AddProduct() {
     return (
         <div className="max-w-3xl space-y-6">
             <div className="flex items-center gap-3">
-                <button onClick={() => navigate('/admin/products')} className="text-gray-500 hover:text-gray-700">←</button>
-                <h1 className="text-2xl font-bold text-gray-900">Add Product</h1>
+                <button onClick={() => navigate('/admin/products')} className="text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" /></svg></button>
+                <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Add Product</h1>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="card space-y-4">
-                    <h2 className="font-semibold text-gray-900">Basic Info</h2>
+                    <h2 className="font-semibold text-surface-900 dark:text-white">Basic Info</h2>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -130,15 +132,16 @@ export default function AddProduct() {
                             {errors.selling_price && <p className="text-red-500 text-xs mt-1">{errors.selling_price}</p>}
                         </div>
                         <div>
-                            <label className="label">Stock Quantity</label>
-                            <input type="number" min={0} className="input" value={form.stock_quantity} onChange={e => setForm(f => ({ ...f, stock_quantity: e.target.value }))} />
+                            <label className="label">Stock Quantity *</label>
+                            <input type="number" min={1} className="input" value={form.stock_quantity} onChange={e => setForm(f => ({ ...f, stock_quantity: e.target.value }))} />
+                            {errors.stock_quantity && <p className="text-red-500 text-xs mt-1">{errors.stock_quantity}</p>}
                         </div>
                     </div>
                 </div>
 
                 {/* Categories */}
                 <div className="card space-y-3">
-                    <h2 className="font-semibold text-gray-900">Categories *</h2>
+                    <h2 className="font-semibold text-surface-900 dark:text-white">Categories *</h2>
                     {errors.category_ids && <p className="text-red-500 text-xs">{errors.category_ids}</p>}
                     <div className="flex flex-wrap gap-2">
                         {categories?.map(cat => (
@@ -147,8 +150,8 @@ export default function AddProduct() {
                                 type="button"
                                 onClick={() => toggleCategory(cat.category_id)}
                                 className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${form.category_ids.includes(cat.category_id)
-                                    ? 'bg-blue-600 text-white border-blue-600'
-                                    : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                                    ? 'bg-primary-600 text-white border-primary-600'
+                                    : 'bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 border-surface-300 dark:border-surface-600 hover:border-blue-400'
                                     }`}
                             >
                                 {cat.name}
@@ -159,7 +162,7 @@ export default function AddProduct() {
 
                 {/* Tags */}
                 <div className="card space-y-3">
-                    <h2 className="font-semibold text-gray-900">Tags (optional)</h2>
+                    <h2 className="font-semibold text-surface-900 dark:text-white">Tags (optional)</h2>
                     <input
                         className="input"
                         placeholder="electronics, gaming, accessories (comma-separated)"
@@ -169,17 +172,17 @@ export default function AddProduct() {
                 </div>
 
                 <div className="card space-y-4">
-                    <h2 className="font-semibold text-gray-900">Promotion</h2>
+                    <h2 className="font-semibold text-surface-900 dark:text-white">Promotion</h2>
                     <div className="grid grid-cols-2 gap-4">
                         <label className="flex items-center gap-3 cursor-pointer">
                             <button
                                 type="button"
                                 onClick={() => setForm(f => ({ ...f, is_featured: !f.is_featured }))}
-                                className={`relative inline-flex h-6 w-11 rounded-full transition-colors ${form.is_featured ? 'bg-blue-600' : 'bg-gray-300'}`}
+                                className={`relative inline-flex h-6 w-11 rounded-full transition-colors ${form.is_featured ? 'bg-primary-600' : 'bg-gray-300'}`}
                             >
                                 <span className={`inline-block h-5 w-5 rounded-full bg-white shadow mt-0.5 transition-transform ${form.is_featured ? 'translate-x-5' : 'translate-x-0.5'}`} />
                             </button>
-                            <span className="text-sm font-medium text-gray-700">Admin featured product</span>
+                            <span className="text-sm font-medium text-surface-700 dark:text-surface-300">Admin featured product</span>
                         </label>
                         <label className="flex items-center gap-3 cursor-pointer">
                             <button
@@ -189,7 +192,7 @@ export default function AddProduct() {
                             >
                                 <span className={`inline-block h-5 w-5 rounded-full bg-white shadow mt-0.5 transition-transform ${form.is_promoted ? 'translate-x-5' : 'translate-x-0.5'}`} />
                             </button>
-                            <span className="text-sm font-medium text-gray-700">Promote this product</span>
+                            <span className="text-sm font-medium text-surface-700 dark:text-surface-300">Promote this product</span>
                         </label>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
@@ -206,18 +209,19 @@ export default function AddProduct() {
 
                 {/* Images */}
                 <div className="card space-y-3">
-                    <h2 className="font-semibold text-gray-900">Product Images (max 8, 5MB each)</h2>
+                    <h2 className="font-semibold text-surface-900 dark:text-white">Product Images * (max 8, 5MB each)</h2>
+                    {errors.images && <p className="text-red-500 text-xs">{errors.images}</p>}
                     <input
                         type="file"
                         accept="image/jpeg,image/png,image/webp"
                         multiple
                         onChange={handleImageChange}
-                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        className="block w-full text-sm text-surface-500 dark:text-surface-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                     />
                     {imagePreview.length > 0 && (
                         <div className="flex gap-2 flex-wrap">
                             {imagePreview.map((src, i) => (
-                                <img key={i} src={src} alt="" className="w-20 h-20 rounded-lg object-cover border border-gray-200" />
+                                <img key={i} src={src} alt="" className="w-20 h-20 rounded-lg object-cover border border-surface-200 dark:border-surface-700" />
                             ))}
                         </div>
                     )}
@@ -229,11 +233,11 @@ export default function AddProduct() {
                         <button
                             type="button"
                             onClick={() => setForm(f => ({ ...f, is_active: !f.is_active }))}
-                            className={`relative inline-flex h-6 w-11 rounded-full transition-colors ${form.is_active ? 'bg-blue-600' : 'bg-gray-300'}`}
+                            className={`relative inline-flex h-6 w-11 rounded-full transition-colors ${form.is_active ? 'bg-primary-600' : 'bg-gray-300'}`}
                         >
                             <span className={`inline-block h-5 w-5 rounded-full bg-white shadow mt-0.5 transition-transform ${form.is_active ? 'translate-x-5' : 'translate-x-0.5'}`} />
                         </button>
-                        <span className="text-sm font-medium text-gray-700">Active (visible to customers)</span>
+                        <span className="text-sm font-medium text-surface-700 dark:text-surface-300">Active (visible to customers)</span>
                     </label>
                 </div>
 
