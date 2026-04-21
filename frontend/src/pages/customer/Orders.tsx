@@ -305,87 +305,41 @@ export default function Orders() {
     if (isLoading) return <LoadingSpinner />
 
     return (
-        <div className="space-y-6">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">My Orders</h1>
-            {!data || data.items.length === 0 ? (
-                <div className="text-center py-16 text-gray-500 dark:text-gray-400">
-                    <p className="text-5xl mb-4">📦</p>
-                    <p className="text-lg font-medium">No orders yet</p>
-                    <Link to="/products" className="btn-primary mt-4 inline-block">Start Shopping</Link>
-                </div>
-            ) : (
-                <div className="space-y-4">
-                    {data.items.map(order => (
-                        <div key={order.order_id} className="card hover:shadow-md transition-shadow">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">#{order.order_id.slice(0, 8).toUpperCase()}</p>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">{new Date(order.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                                </div>
-                                <span className={`badge ${STATUS_COLORS[order.status] || 'bg-gray-100 text-gray-700'}`}>
-                                    {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                                </span>
-                            </div>
-                            <div className="mt-3 space-y-1">
-                                {order.items.slice(0, 3).map(item => (
-                                    <p key={item.order_item_id} className="text-sm text-gray-700 dark:text-gray-200 truncate">
-                                        {item.product_name || 'Product'} × {item.quantity}
-                                    </p>
-                                ))}
-                                {order.items.length > 3 && (
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">+{order.items.length - 3} more</p>
-                                )}
-                            </div>
-                            <div className="mt-3 flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm text-gray-600 dark:text-gray-300">{order.items.length} item(s)</p>
-                                    <p className="text-base font-bold text-gray-900 dark:text-gray-100 mt-1">₹{Number(order.total_price).toLocaleString('en-IN')}</p>
-                                </div>
-                                <div className="flex gap-2">
-                                    {order.tracking_number && (
-                                        <span className="text-xs text-purple-700 bg-purple-100 px-2 py-1 rounded dark:bg-purple-900/30 dark:text-purple-300">
-                                            Track: {order.tracking_number}
-                                        </span>
-                                    )}
-                                    <Link to={`/orders/${order.order_id}`} className="btn-secondary text-xs py-1.5 px-3">
-                                        View Details
-                                    </Link>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
+        <AnimatedPage>
+            <div className="space-y-6">
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">My Orders</h1>
 
-            {/* Order-based recommendations */}
-            {recommendations && recommendations.length > 0 && (
-                <section className="mt-8">
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1">Recommended Based on Your Orders</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Products similar to what you've purchased</p>
-                    <div className="flex gap-4 overflow-x-auto pb-2">
-                        {recommendations.map(rec => (
-                            <Link
-                                key={rec.product_id}
-                                to={`/products/${rec.product_id}`}
-                                className="shrink-0 w-44 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow overflow-hidden"
-                            >
-                                <div className="w-full aspect-square bg-gray-100 dark:bg-gray-700 flex items-center justify-center overflow-hidden">
-                                    {rec.image_url
-                                        ? <img src={rec.image_url} alt={rec.name} className="w-full h-full object-cover" />
-                                        : <span className="text-4xl">📦</span>
-                                    }
-                                </div>
-                                <div className="p-2">
-                                    <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 line-clamp-2 leading-snug mb-1">{rec.name || 'View Product'}</p>
-                                    {rec.selling_price && (
-                                        <div className="flex items-baseline gap-1">
-                                            <span className="text-sm font-bold text-gray-900 dark:text-gray-100">₹{Number(rec.selling_price).toLocaleString('en-IN')}</span>
-                                            {rec.mrp && rec.mrp > rec.selling_price && (
-                                                <span className="text-xs text-gray-400 line-through">₹{Number(rec.mrp).toLocaleString('en-IN')}</span>
+                {/* Order-based recommendations */}
+                {recommendations && recommendations.length > 0 && (
+                    <FadeInView>
+                        <section className="mt-2">
+                            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1">Recommended Based on Your Orders</h2>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Products similar to what you've purchased</p>
+                            <div className="flex gap-4 overflow-x-auto pb-2">
+                                {recommendations.map(rec => (
+                                    <Link
+                                        key={rec.product_id}
+                                        to={`/products/${rec.product_id}`}
+                                        className="shrink-0 w-44 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow overflow-hidden"
+                                    >
+                                        <div className="w-full aspect-square bg-gray-100 dark:bg-gray-700 flex items-center justify-center overflow-hidden">
+                                            {rec.image_url
+                                                ? <img src={rec.image_url} alt={rec.name} className="w-full h-full object-cover" />
+                                                : <span className="text-4xl">📦</span>
+                                            }
+                                        </div>
+                                        <div className="p-2">
+                                            <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 line-clamp-2 leading-snug mb-1">{rec.name || 'View Product'}</p>
+                                            {rec.selling_price && (
+                                                <div className="flex items-baseline gap-1">
+                                                    <span className="text-sm font-bold text-gray-900 dark:text-gray-100">₹{Number(rec.selling_price).toLocaleString('en-IN')}</span>
+                                                    {rec.mrp && rec.mrp > rec.selling_price && (
+                                                        <span className="text-xs text-gray-400 line-through">₹{Number(rec.mrp).toLocaleString('en-IN')}</span>
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
-                                    </div>
-                                </Link>
+                                    </Link>
                                 ))}
                             </div>
                         </section>
