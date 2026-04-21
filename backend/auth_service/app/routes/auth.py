@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
+import time
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,15 +9,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
 from app.models.user import User
 from app.schemas.auth import (
+    CaptchaResponse,
     ChangePasswordRequest,
     LoginRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
     RefreshRequest,
     RegisterRequest,
+    RegisterVerifyRequest,
+    ResendOtpRequest,
     TokenResponse,
     UserResponse,
     UserUpdateRequest,
+)
+from app.services.otp_service import (
+    consume_pending_registration,
+    create_captcha,
+    delete_pending_registration,
+    generate_otp,
+    send_otp_email,
+    upsert_pending_registration,
+    verify_captcha,
 )
 from app.utils.rbac import get_current_user
 from app.utils.security import (
@@ -32,38 +45,180 @@ from app.utils.security import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == payload.email.lower()))
-    if result.scalar_one_or_none():
+# ── Captcha ────────────────────────────────────────────────
+
+@router.get("/captcha", response_model=CaptchaResponse)
+async def issue_captcha(db: AsyncSession = Depends(get_db)):
+    return await create_captcha(db)
+
+
+# ── In-memory failed-login tracker (per email+ip) ──────────
+# After N failures we require a captcha on the next login attempt.
+
+_FAILED_LOGIN_THRESHOLD = 3
+_FAILED_LOGIN_TTL_SECONDS = 15 * 60
+_failed_login_counter: dict[str, tuple[float, int]] = {}
+
+
+def _failed_key(email: str, request: Request) -> str:
+    ip = (request.client.host if request.client else "-") or "-"
+    return f"{email.lower()}::{ip}"
+
+
+def _needs_captcha(key: str) -> bool:
+    entry = _failed_login_counter.get(key)
+    if not entry:
+        return False
+    ts, count = entry
+    if time.time() - ts > _FAILED_LOGIN_TTL_SECONDS:
+        _failed_login_counter.pop(key, None)
+        return False
+    return count >= _FAILED_LOGIN_THRESHOLD
+
+
+def _record_failed_login(key: str) -> int:
+    ts, count = _failed_login_counter.get(key, (time.time(), 0))
+    if time.time() - ts > _FAILED_LOGIN_TTL_SECONDS:
+        count = 0
+    count += 1
+    _failed_login_counter[key] = (time.time(), count)
+    return count
+
+
+def _clear_failed_login(key: str) -> None:
+    _failed_login_counter.pop(key, None)
+
+
+# ── Registration (2 step: init → verify) ───────────────────
+
+@router.post("/register", status_code=status.HTTP_202_ACCEPTED)
+async def register_init(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    """Step 1: validate data, verify captcha, send OTP to email."""
+    if not await verify_captcha(db, payload.captcha_id, payload.captcha_answer):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Captcha verification failed — please try again",
+        )
+
+    email = payload.email.lower()
+    existing = await db.execute(select(User).where(User.email == email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+
+    otp = generate_otp()
+    await upsert_pending_registration(
+        db,
+        email=email,
+        full_name=payload.full_name.strip(),
+        phone=payload.phone,
+        hashed_password=hash_password(payload.password),
+        otp=otp,
+    )
+    await send_otp_email(email, otp)
+
+    response: dict = {"message": "OTP sent to your email", "email": email, "expires_in_seconds": 600}
+    # Dev-mode convenience so the UI can display the OTP when no SMTP is configured.
+    from app.config import settings as _settings
+    if _settings.ENVIRONMENT == "development" and not _settings.SMTP_USER:
+        response["dev_otp"] = otp
+    return response
+
+
+@router.post("/register/verify", response_model=TokenResponse)
+async def register_verify(payload: RegisterVerifyRequest, db: AsyncSession = Depends(get_db)):
+    """Step 2: confirm OTP and create the account."""
+    pending = await consume_pending_registration(db, payload.email, payload.otp)
+    if not pending:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification code",
+        )
+
+    # Ensure nobody grabbed this email in the meantime.
+    existing = await db.execute(select(User).where(User.email == pending.email))
+    if existing.scalar_one_or_none():
+        await delete_pending_registration(db, pending.email)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
     user = User(
-        email=payload.email.lower(),
-        full_name=payload.full_name,
-        phone=payload.phone,
-        hashed_password=hash_password(payload.password),
+        email=pending.email,
+        full_name=pending.full_name,
+        phone=pending.phone,
+        hashed_password=pending.hashed_password,
         role="customer",
     )
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    return user
+    await delete_pending_registration(db, pending.email)
+
+    access = create_access_token(str(user.user_id), user.role)
+    refresh = create_refresh_token(str(user.user_id))
+    return TokenResponse(access_token=access, refresh_token=refresh)
+
+
+@router.post("/register/resend", status_code=status.HTTP_202_ACCEPTED)
+async def register_resend(payload: ResendOtpRequest, db: AsyncSession = Depends(get_db)):
+    """Re-issue a fresh OTP for an existing pending registration."""
+    from app.models.user import PendingRegistration
+    pending = await db.get(PendingRegistration, payload.email.lower().strip())
+    if not pending:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No pending registration for this email")
+
+    otp = generate_otp()
+    await upsert_pending_registration(
+        db,
+        email=pending.email,
+        full_name=pending.full_name,
+        phone=pending.phone,
+        hashed_password=pending.hashed_password,
+        otp=otp,
+    )
+    await send_otp_email(pending.email, otp)
+
+    response: dict = {"message": "OTP re-sent"}
+    from app.config import settings as _settings
+    if _settings.ENVIRONMENT == "development" and not _settings.SMTP_USER:
+        response["dev_otp"] = otp
+    return response
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(payload: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    key = _failed_key(payload.email, request)
+
+    if _needs_captcha(key):
+        if not payload.captcha_id or not payload.captcha_answer:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Captcha required after repeated failed attempts",
+                headers={"X-Captcha-Required": "1"},
+            )
+        if not await verify_captcha(db, payload.captcha_id, payload.captcha_answer):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Captcha verification failed",
+                headers={"X-Captcha-Required": "1"},
+            )
+
     result = await db.execute(select(User).where(User.email == payload.email.lower()))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(payload.password, user.hashed_password):
+        count = _record_failed_login(key)
+        detail = "Invalid credentials"
+        headers = {}
+        if count >= _FAILED_LOGIN_THRESHOLD:
+            headers["X-Captcha-Required"] = "1"
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
+            detail=detail,
+            headers=headers,
         )
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended")
 
+    _clear_failed_login(key)
     access = create_access_token(str(user.user_id), user.role)
     refresh = create_refresh_token(str(user.user_id))
     return TokenResponse(access_token=access, refresh_token=refresh)

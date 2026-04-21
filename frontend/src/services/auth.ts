@@ -1,12 +1,43 @@
 import { authClient } from './api'
 import type { TokenResponse, User, StaffUser } from '../types'
 
-export const authService = {
-    register: (data: { email: string; password: string; full_name: string; phone?: string }) =>
-        authClient.post<User>('/auth/register', data).then(r => r.data),
+export interface CaptchaChallenge {
+    captcha_id: string
+    question: string
+}
 
-    login: (email: string, password: string) =>
-        authClient.post<TokenResponse>('/auth/login', { email, password }).then(r => r.data),
+export const authService = {
+    getCaptcha: () => authClient.get<CaptchaChallenge>('/auth/captcha').then(r => r.data),
+
+    register: (data: {
+        email: string
+        password: string
+        full_name: string
+        phone?: string
+        captcha_id: string
+        captcha_answer: string
+    }) =>
+        authClient
+            .post<{ message: string; email: string; expires_in_seconds: number; dev_otp?: string }>(
+                '/auth/register',
+                data,
+            )
+            .then(r => r.data),
+
+    verifyRegistration: (email: string, otp: string) =>
+        authClient.post<TokenResponse>('/auth/register/verify', { email, otp }).then(r => r.data),
+
+    resendRegisterOtp: (email: string) =>
+        authClient.post<{ message: string; dev_otp?: string }>('/auth/register/resend', { email }).then(r => r.data),
+
+    login: (
+        email: string,
+        password: string,
+        captcha?: { captcha_id: string; captcha_answer: string },
+    ) =>
+        authClient
+            .post<TokenResponse>('/auth/login', { email, password, ...(captcha || {}) })
+            .then(r => r.data),
 
     me: () => authClient.get<User>('/auth/me').then(r => r.data),
 

@@ -19,6 +19,7 @@ from app.schemas.order import (
 from app.services.order_service import (
     create_order, get_order, list_orders, update_order_status,
 )
+from app.services.pincode_service import lookup_pincode
 from sqlalchemy import select
 
 router = APIRouter(tags=["orders"])
@@ -43,6 +44,16 @@ async def create_address(
     auth: dict = Depends(_auth),
     db: AsyncSession = Depends(get_db),
 ):
+    # Verify pincode against India Post directory. If upstream is reachable
+    # and reports the PIN is invalid, reject. (If upstream is unreachable, we
+    # already accept the format-only check performed in the schema.)
+    info = await lookup_pincode(payload.pincode)
+    if not info["valid"]:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Pincode '{payload.pincode}' is not a valid Indian PIN code",
+        )
+
     addr = Address(user_id=uuid.UUID(auth["user_id"]), **payload.model_dump())
     db.add(addr)
     await db.commit()
@@ -54,6 +65,32 @@ async def create_address(
 async def list_addresses(auth: dict = Depends(_auth), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Address).where(Address.user_id == uuid.UUID(auth["user_id"])))
     return result.scalars().all()
+
+
+@router.delete("/addresses/{address_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_address(
+    address_id: uuid.UUID,
+    auth: dict = Depends(_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Address).where(
+            Address.address_id == address_id,
+            Address.user_id == uuid.UUID(auth["user_id"]),
+        )
+    )
+    addr = result.scalar_one_or_none()
+    if not addr:
+        raise HTTPException(status_code=404, detail="Address not found")
+    await db.delete(addr)
+    await db.commit()
+
+
+@router.get("/pincode/{pincode}", tags=["pincode"])
+async def pincode_info(pincode: str):
+    """Resolve an Indian PIN code to its city/state (for autofill & validation)."""
+    info = await lookup_pincode(pincode)
+    return info
 
 
 # ── Orders ───────────────────────────────────────────────────

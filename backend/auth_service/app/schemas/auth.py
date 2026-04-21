@@ -9,6 +9,8 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     full_name: str = Field(min_length=2, max_length=255)
     phone: Optional[str] = Field(default=None, max_length=20)
+    captcha_id: str = Field(min_length=1)
+    captcha_answer: str = Field(min_length=1, max_length=10)
 
     @field_validator("password")
     @classmethod
@@ -20,9 +22,25 @@ class RegisterRequest(BaseModel):
         return v
 
 
+class RegisterVerifyRequest(BaseModel):
+    email: EmailStr
+    otp: str = Field(min_length=4, max_length=8)
+
+
+class ResendOtpRequest(BaseModel):
+    email: EmailStr
+
+
+class CaptchaResponse(BaseModel):
+    captcha_id: str
+    question: str
+
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    captcha_id: Optional[str] = None
+    captcha_answer: Optional[str] = None
 
 
 class TokenResponse(BaseModel):

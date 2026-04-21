@@ -20,6 +20,7 @@ const Checkout = lazy(() => import('./pages/customer/Checkout'))
 const CustomerOrders = lazy(() => import('./pages/customer/Orders'))
 const CustomerOrderDetail = lazy(() => import('./pages/customer/OrderDetail'))
 const CustomerEvents = lazy(() => import('./pages/customer/Events'))
+const CustomerProfile = lazy(() => import('./pages/customer/Profile'))
 
 // Admin
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'))
@@ -82,6 +83,7 @@ export default function App() {
                             <Route path="/checkout" element={<Checkout />} />
                             <Route path="/orders" element={<CustomerOrders />} />
                             <Route path="/orders/:orderId" element={<CustomerOrderDetail />} />
+                            <Route path="/profile" element={<CustomerProfile />} />
                         </Route>
                     </Route>
 

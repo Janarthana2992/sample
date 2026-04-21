@@ -5,6 +5,13 @@ export const orderService = {
     // Addresses
     listAddresses: () => orderClient.get<Address[]>('/addresses').then(r => r.data),
     createAddress: (data: object) => orderClient.post<Address>('/addresses', data).then(r => r.data),
+    deleteAddress: (id: string) => orderClient.delete(`/addresses/${id}`).then(r => r.data),
+    lookupPincode: (pincode: string) =>
+        orderClient
+            .get<{ pincode: string; valid: boolean; city: string | null; state: string | null; district: string | null }>(
+                `/pincode/${pincode}`,
+            )
+            .then(r => r.data),
 
     // Orders
     listOrders: (params?: Record<string, unknown>) =>

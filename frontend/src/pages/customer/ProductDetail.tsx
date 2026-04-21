@@ -273,11 +273,9 @@ export default function ProductDetail() {
                     )}
 
                     {product.tags && product.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                            {product.tags.map(tag => (
-                                <span key={tag} className="badge bg-gray-100 text-gray-600">#{tag}</span>
-                            ))}
-                        </div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                            {product.tags.map(tag => `#${tag}`).join(' ')}
+                        </p>
                     )}
                 </div>
             </div>

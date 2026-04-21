@@ -67,6 +67,27 @@ CREATE INDEX idx_auth_tokens_user ON auth_tokens (user_id);
 
 CREATE INDEX idx_auth_tokens_hash ON auth_tokens (token_hash);
 
+-- Holds registration details until the user confirms their email via OTP
+CREATE TABLE IF NOT EXISTS pending_registrations (
+    email VARCHAR(255) PRIMARY KEY,
+    full_name VARCHAR(255) NOT NULL,
+    phone VARCHAR(20),
+    hashed_password TEXT NOT NULL,
+    otp_hash TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    attempts VARCHAR(5) NOT NULL DEFAULT '0',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Short-lived math captcha challenges for register / throttled login
+CREATE TABLE IF NOT EXISTS captcha_challenges (
+    captcha_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    answer_hash TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- =============================================================
 -- CATEGORIES
 -- =============================================================

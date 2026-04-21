@@ -1,27 +1,16 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { orderService } from '../../services/orders'
 import { cartService } from '../../services/cart'
 import { useCartStore } from '../../store/cartStore'
 import { useAuthStore } from '../../store/authStore'
 import { LoadingSpinner } from '../../components/common/LoadingSpinner'
-import { AddressAutocomplete } from '../../components/common/AddressAutocomplete'
+import { AddressForm } from '../../components/common/AddressForm'
 import type { Address } from '../../types'
 
 const STEPS = ['Cart Review', 'Shipping', 'Payment', 'Confirm']
-
-interface AddressForm {
-    full_name: string
-    phone: string
-    address_line1: string
-    address_line2?: string
-    city: string
-    state: string
-    pincode: string
-}
 
 export default function Checkout() {
     const [step, setStep] = useState(0)
@@ -32,22 +21,9 @@ export default function Checkout() {
     const { user } = useAuthStore()
     const navigate = useNavigate()
 
-    const { register, handleSubmit, formState: { errors }, setValue } = useForm<AddressForm>()
-
     const { data: cart, isLoading: cartLoading } = useQuery({ queryKey: ['cart'], queryFn: cartService.getCart })
     const { data: addresses, refetch: refetchAddresses } = useQuery({ queryKey: ['addresses'], queryFn: orderService.listAddresses })
     const { data: paymentConfig } = useQuery({ queryKey: ['payment-config'], queryFn: orderService.getPaymentConfig })
-
-    const addAddressMutation = useMutation({
-        mutationFn: orderService.createAddress,
-        onSuccess: (addr: Address) => {
-            setSelectedAddressId(addr.address_id)
-            setShowNewAddress(false)
-            refetchAddresses()
-            toast.success('Address saved')
-        },
-        onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to save address'),
-    })
 
     const checkoutMutation = useMutation({
         mutationFn: () => orderService.checkout(selectedAddressId, paymentMethod),
@@ -175,56 +151,16 @@ export default function Checkout() {
                     </button>
 
                     {showNewAddress && (
-                        <form onSubmit={handleSubmit(d => addAddressMutation.mutate(d))} className="space-y-3 border-t pt-4">
-                            <div>
-                                <label className="label">Search Address (Google Maps)</label>
-                                <AddressAutocomplete
-                                    onPlaceSelected={(place) => {
-                                        setValue('address_line1', place.address_line1)
-                                        setValue('city', place.city)
-                                        setValue('state', place.state)
-                                        setValue('pincode', place.pincode)
-                                    }}
-                                    placeholder="Start typing to search..."
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="label">Full Name</label>
-                                    <input className="input" {...register('full_name', { required: true })} />
-                                </div>
-                                <div>
-                                    <label className="label">Phone</label>
-                                    <input className="input" {...register('phone', { required: true })} />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="label">Address Line 1</label>
-                                <input className="input" {...register('address_line1', { required: true })} />
-                            </div>
-                            <div>
-                                <label className="label">Address Line 2 (optional)</label>
-                                <input className="input" {...register('address_line2')} />
-                            </div>
-                            <div className="grid grid-cols-3 gap-3">
-                                <div>
-                                    <label className="label">City</label>
-                                    <input className="input" {...register('city', { required: true })} />
-                                </div>
-                                <div>
-                                    <label className="label">State</label>
-                                    <input className="input" {...register('state', { required: true })} />
-                                </div>
-                                <div>
-                                    <label className="label">Pincode</label>
-                                    <input className="input" {...register('pincode', { required: true, pattern: /^\d{6}$/ })} />
-                                    {errors.pincode && <p className="text-red-500 text-xs mt-1">Enter a valid 6-digit pincode</p>}
-                                </div>
-                            </div>
-                            <button type="submit" disabled={addAddressMutation.isPending} className="btn-primary">
-                                {addAddressMutation.isPending ? 'Saving...' : 'Save Address'}
-                            </button>
-                        </form>
+                        <div className="border-t pt-4">
+                            <AddressForm
+                                onSaved={addr => {
+                                    setSelectedAddressId(addr.address_id)
+                                    setShowNewAddress(false)
+                                    refetchAddresses()
+                                }}
+                                onCancel={() => setShowNewAddress(false)}
+                            />
+                        </div>
                     )}
 
                     <div className="flex gap-3 pt-2">

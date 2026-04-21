@@ -74,3 +74,35 @@ class AuthToken(Base):
     created_at = Column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
+
+
+class PendingRegistration(Base):
+    """Holds signup data until the user confirms their email with an OTP."""
+    __tablename__ = "pending_registrations"
+
+    email = Column(String(255), primary_key=True)
+    full_name = Column(String(255), nullable=False)
+    phone = Column(String(20))
+    hashed_password = Column(Text, nullable=False)
+    otp_hash = Column(Text, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    attempts = Column(
+        # stored as simple int column
+        String(5), nullable=False, default="0"
+    )
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class CaptchaChallenge(Base):
+    """Short-lived server-side math captcha. Consumed once."""
+    __tablename__ = "captcha_challenges"
+
+    captcha_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    answer_hash = Column(Text, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True))
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )

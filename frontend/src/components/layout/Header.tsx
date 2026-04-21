@@ -229,6 +229,7 @@ export function Header() {
                                                 <p className="text-xs text-gray-500 truncate dark:text-gray-400">{user?.email}</p>
                                             </div>
                                             <Link to="/events" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 md:hidden dark:text-gray-300 dark:hover:bg-gray-700">📅 Events</Link>
+                                            <Link to="/profile" onClick={() => setShowUserMenu(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700">My Profile</Link>
                                             <Link to="/orders" onClick={() => setShowUserMenu(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700">My Orders</Link>
                                             <button
                                                 onClick={() => { logout(); navigate('/login') }}
